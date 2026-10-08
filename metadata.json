@@ -1,0 +1,6 @@
+{
+  "name": "CalibTrack - Laboratory Calibration Management",
+  "description": "Professional laboratory equipment calibration tracking portal to manage equipment, track calibration history, monitor due dates, and ensure compliance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
