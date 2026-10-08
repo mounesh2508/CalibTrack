@@ -22,6 +22,7 @@ import {
   initialCalendarEvents,
 } from './data/mockData';
 import { Equipment, CalibrationRecord, NotificationItem, RecentActivity } from './types';
+import { api, mapBackendCalibrationToFrontend } from './services/api';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -35,6 +36,46 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>(initialRecentActivities);
   const [calendarEvents, setCalendarEvents] = useState(initialCalendarEvents);
+  const [apiConnected, setApiConnected] = useState<boolean | null>(null);
+
+  // Sync with backend API on mount
+  useEffect(() => {
+    async function loadBackendData() {
+      try {
+        const [backendEquip, backendNotifs, backendCalib] = await Promise.all([
+          api.getEquipmentList().catch(() => null),
+          api.getNotifications().catch(() => null),
+          api.getCalibrationRecords().catch(() => null),
+        ]);
+
+        if (backendEquip && backendEquip.length > 0) {
+          setEquipmentList(backendEquip);
+          setApiConnected(true);
+        }
+
+        if (backendNotifs && backendNotifs.length > 0) {
+          setNotifications(backendNotifs);
+        }
+
+        if (backendCalib && backendCalib.length > 0) {
+          const mapped = backendCalib.map((rec) => {
+            const eq = backendEquip?.find((e) => e.id === rec.equipment_id);
+            return mapBackendCalibrationToFrontend(
+              rec,
+              eq?.name || 'Laboratory Instrument',
+              eq?.code || 'EQ-ASSET'
+            );
+          });
+          setCalibrationRecords(mapped);
+        }
+      } catch (err) {
+        console.warn('[CalibTrack] Using client fallback data state:', err);
+        setApiConnected(false);
+      }
+    }
+
+    loadBackendData();
+  }, []);
 
   // Quick Calibrate Modal state
   const [calibrateTarget, setCalibrateTarget] = useState<Equipment | null>(null);
@@ -64,8 +105,29 @@ export default function App() {
     }
   };
 
-  const handleAddEquipment = (newEquip: Equipment) => {
+  const handleAddEquipment = async (newEquip: Equipment) => {
+    // 1. Optimistic update in UI
     setEquipmentList((prev) => [newEquip, ...prev]);
+
+    // 2. Call backend API
+    try {
+      await api.createEquipment({
+        equipment_code: newEquip.code,
+        name: newEquip.name,
+        category: newEquip.category,
+        manufacturer: newEquip.manufacturer,
+        model_number: newEquip.model,
+        serial_number: newEquip.serialNumber,
+        location: newEquip.location,
+        department: newEquip.department,
+        purchase_date: newEquip.purchaseDate,
+        calibration_interval_days: newEquip.calibrationIntervalMonths * 30,
+        last_calibration_date: newEquip.lastCalibrationDate,
+        description: newEquip.description,
+      });
+    } catch (err) {
+      console.warn('[API] Saved to local state, backend sync error:', err);
+    }
 
     // Add recent activity
     const activity: RecentActivity = {
@@ -92,10 +154,11 @@ export default function App() {
     setNotifications((prev) => [notif, ...prev]);
   };
 
-  const handleAddCalibrationRecord = (record: CalibrationRecord) => {
+  const handleAddCalibrationRecord = async (record: CalibrationRecord) => {
+    // 1. Optimistic update
     setCalibrationRecords((prev) => [record, ...prev]);
 
-    // Update corresponding equipment
+    // Update corresponding equipment in local state
     setEquipmentList((prev) =>
       prev.map((eq) => {
         if (eq.id === record.equipmentId || eq.code === record.equipmentCode) {
@@ -113,6 +176,29 @@ export default function App() {
         return eq;
       })
     );
+
+    // 2. Call backend API
+    try {
+      const dbResult =
+        record.result === 'Failed'
+          ? 'FAILED'
+          : record.result === 'Passed with Adjustment'
+          ? 'CONDITIONAL'
+          : 'PASSED';
+
+      await api.createCalibrationRecord({
+        equipment_id: record.equipmentId,
+        calibration_date: record.calibrationDate,
+        next_due_date: record.nextDueDate,
+        performed_by: record.technicianName,
+        calibration_provider: record.serviceProvider,
+        certificate_number: record.certificateNumber,
+        result: dbResult,
+        remarks: record.remarks,
+      });
+    } catch (err) {
+      console.warn('[API] Saved to local state, backend sync error:', err);
+    }
 
     // Add recent activity
     const activity: RecentActivity = {
