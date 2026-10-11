@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
-import { Equipment, NotificationItem } from '../../types';
+import { Equipment, NotificationItem, AuthUser } from '../../types';
 
 interface AppLayoutProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   notifications: NotificationItem[];
   equipmentList: Equipment[];
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
   children: React.ReactNode;
 }
 
@@ -16,6 +18,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onNavigate,
   notifications,
   equipmentList,
+  currentUser,
+  onLogout,
   children,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -34,6 +38,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
         unreadCount={unreadCount}
+        currentUser={currentUser}
+        onLogout={onLogout}
       />
 
       {/* Main Content Area */}
@@ -44,6 +50,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           onOpenMobileSidebar={() => setMobileOpen(true)}
           notifications={notifications}
           equipmentList={equipmentList}
+          currentUser={currentUser}
+          onLogout={onLogout}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">

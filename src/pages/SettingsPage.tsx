@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell,
   Clock,
@@ -8,32 +8,124 @@ import {
   CheckCircle2,
   Mail,
   Sliders,
+  AlertCircle,
+  RefreshCw,
+  Users,
+  ShieldAlert,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { FormField, Input, Select } from '../components/common/FormField';
+import { AuthUser } from '../types';
+import { api } from '../services/api';
 
-export const SettingsPage: React.FC = () => {
-  const [profile, setProfile] = useState({
-    name: 'Admin User',
-    email: 'admin@calibtrack-lab.com',
-    role: 'Quality Assurance & Metrology Administrator',
-    organization: 'Central Analytical & Biometrology Laboratories',
-  });
+interface SettingsPageProps {
+  currentUser?: AuthUser | null;
+}
 
-  const [reminderDays, setReminderDays] = useState('30');
-  const [autoReminders, setAutoReminders] = useState(true);
+export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
+  const isAdmin = currentUser?.role === 'ADMIN';
+
+  const [reminderDays, setReminderDays] = useState('7');
   const [inAppNotifs, setInAppNotifs] = useState(true);
   const [emailNotifs, setEmailNotifs] = useState(true);
-  const [overdueEscalation, setOverdueEscalation] = useState(true);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Staff management state (Admin only)
+  const [staffList, setStaffList] = useState<AuthUser[]>([]);
+  const [isLoadingStaff, setIsLoadingStaff] = useState(false);
+  const [roleActionId, setRoleActionId] = useState<string | null>(null);
+  const [roleNotice, setRoleNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Load backend reminder settings
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const data = await api.fetchReminderSettings();
+        if (data) {
+          setReminderDays(String(data.reminder_days_before || 7));
+          setEmailNotifs(Boolean(data.email_enabled));
+          setInAppNotifs(Boolean(data.in_app_enabled));
+          setSmtpConfigured(Boolean(data.smtp_configured));
+        }
+      } catch {
+        // Fallback to local default if API not reached
+      }
+    };
+    loadSettings();
+  }, []);
+
+  const loadStaff = async () => {
+    if (!isAdmin) return;
+    setIsLoadingStaff(true);
+    try {
+      const users = await api.listUsers();
+      setStaffList(users);
+    } catch {
+      // Fallback
+    } finally {
+      setIsLoadingStaff(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdmin) {
+      loadStaff();
+    }
+  }, [isAdmin]);
+
+  const handleToggleRole = async (targetUser: AuthUser) => {
+    const newRole = targetUser.role === 'ADMIN' ? 'TECHNICIAN' : 'ADMIN';
+    setRoleActionId(targetUser.id);
+    setRoleNotice(null);
+    try {
+      const updated = await api.updateUserRole(targetUser.id, newRole);
+      setStaffList((prev) =>
+        prev.map((u) => (u.id === targetUser.id ? { ...u, role: updated.role } : u))
+      );
+      setRoleNotice({
+        message: `Successfully updated role for ${targetUser.name} to ${newRole}.`,
+        type: 'success',
+      });
+      setTimeout(() => setRoleNotice(null), 4000);
+    } catch (err: any) {
+      setRoleNotice({
+        message: err.message || `Failed to update role for ${targetUser.name}.`,
+        type: 'error',
+      });
+    } finally {
+      setRoleActionId(null);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaveSuccess(true);
-    setTimeout(() => {
-      setSaveSuccess(false);
-    }, 2500);
+    if (!isAdmin) {
+      setSaveError('Administrator privileges required to modify calibration thresholds.');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      await api.updateReminderSettings({
+        reminder_days_before: parseInt(reminderDays, 10),
+        email_enabled: emailNotifs,
+        in_app_enabled: inAppNotifs,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setSaveError(err.message || 'Failed to update system settings.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -48,20 +140,44 @@ export const SettingsPage: React.FC = () => {
             Configure calibration thresholds, alert preferences, and administrative profile.
           </p>
         </div>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSave}
-          icon={<Save className="w-4 h-4" />}
-        >
-          Save All Changes
-        </Button>
+        {isAdmin ? (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            isLoading={isSaving}
+            icon={<Save className="w-4 h-4" />}
+          >
+            Save All Changes
+          </Button>
+        ) : (
+          <div className="text-xs px-3 py-1.5 bg-slate-100 text-slate-500 rounded-lg border border-slate-200 font-medium">
+            Staff View-Only
+          </div>
+        )}
       </div>
 
       {saveSuccess && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 text-sm">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <span>System configuration and notification preferences saved successfully.</span>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-3 text-rose-800 text-sm">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+          <span>{saveError}</span>
+        </div>
+      )}
+
+      {!isAdmin && (
+        <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+          <span>
+            You are logged in as <strong>{currentUser?.role || 'TECHNICIAN'}</strong>.
+            Calibration notice windows and reminder settings can only be altered by an Administrator.
+          </span>
         </div>
       )}
 
@@ -81,137 +197,226 @@ export const SettingsPage: React.FC = () => {
               <Select
                 value={reminderDays}
                 onChange={(e) => setReminderDays(e.target.value)}
+                disabled={!isAdmin}
               >
-                <option value="60">60 Days in advance (Comprehensive)</option>
-                <option value="30">30 Days in advance (Recommended standard)</option>
-                <option value="14">14 Days in advance (Short lead-time)</option>
-                <option value="7">7 Days in advance (Urgent)</option>
+                <option value="7">7 Days in Advance (Standard)</option>
+                <option value="14">14 Days in Advance</option>
+                <option value="30">30 Days in Advance (Monthly)</option>
+                <option value="60">60 Days in Advance</option>
               </Select>
             </FormField>
 
-            <div className="flex flex-col justify-center pt-2">
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-lg border border-slate-200">
-                <div>
-                  <p className="text-xs font-semibold text-slate-900">
-                    Automatic Calibration Reminders
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Schedule automated alerts based on equipment interval
-                  </p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={autoReminders}
-                  onChange={(e) => setAutoReminders(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                />
+            <FormField
+              label="SMTP Delivery Status"
+              helperText="Status of background email dispatch service"
+            >
+              <div className="h-10 px-3 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                <span className="text-slate-600">Email Gateway:</span>
+                <span
+                  className={`font-semibold px-2 py-0.5 rounded text-[11px] ${
+                    smtpConfigured
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {smtpConfigured ? 'Active (SMTP Configured)' : 'Disabled (SMTP_HOST unset)'}
+                </span>
               </div>
-            </div>
+            </FormField>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Section 2: Notification Preferences */}
-      <Card>
-        <CardHeader
-          title="Notification Preferences"
-          subtitle="Choose dispatch channels for calibration events"
-          action={<Bell className="w-4 h-4 text-slate-400" />}
-        />
-        <CardContent className="space-y-4">
-          <div className="divide-y divide-slate-100">
-            <div className="py-3 flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold text-slate-900">
-                  In-App Notification Center
-                </p>
-                <p className="text-[11px] text-slate-500">
-                  Display badges and banner alerts in the top bar and notification hub
-                </p>
-              </div>
+          <div className="border-t border-slate-100 pt-4 space-y-3">
+            <h4 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+              Notification Channels
+            </h4>
+
+            <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={inAppNotifs}
                 onChange={(e) => setInAppNotifs(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                disabled={!isAdmin}
+                className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
               />
-            </div>
-
-            <div className="py-3 flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-slate-900">
-                  Email Notifications to Custodians
-                </p>
+                <p className="text-xs font-semibold text-slate-800">In-App Notifications</p>
                 <p className="text-[11px] text-slate-500">
-                  Send certificate expiration warnings to assigned technicians
+                  Generate alerts in the Notification Center for due soon and overdue equipment.
                 </p>
               </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={emailNotifs}
                 onChange={(e) => setEmailNotifs(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                disabled={!isAdmin}
+                className="mt-0.5 w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
               />
-            </div>
-
-            <div className="py-3 flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold text-slate-900">
-                  Critical Overdue Escalation
-                </p>
+                <p className="text-xs font-semibold text-slate-800">Email Reminders</p>
                 <p className="text-[11px] text-slate-500">
-                  Immediately flag quality control managers when equipment passes due date
+                  Send automated MIME email summaries to equipment custodians via background scheduler.
                 </p>
               </div>
-              <input
-                type="checkbox"
-                checked={overdueEscalation}
-                onChange={(e) => setOverdueEscalation(e.target.checked)}
-                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-              />
-            </div>
+            </label>
           </div>
         </CardContent>
       </Card>
 
-      {/* Section 3: Profile */}
+      {/* Section 2: User Profile */}
       <Card>
         <CardHeader
-          title="Administrative Profile"
-          subtitle="User identification and laboratory authorization credentials"
+          title="Staff Profile & Credentials"
+          subtitle="Laboratory authentication and role assignment"
           action={<User className="w-4 h-4 text-slate-400" />}
         />
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Full Name">
+            <FormField label="Full Staff Name">
               <Input
-                value={profile.name}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                value={currentUser?.name || 'Staff User'}
+                disabled
               />
             </FormField>
-
-            <FormField label="Email Address">
+            <FormField label="Staff Email Address">
               <Input
-                type="email"
-                value={profile.email}
-                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-              />
-            </FormField>
-
-            <FormField label="Role / Authorization Level">
-              <Input
-                value={profile.role}
-                onChange={(e) => setProfile({ ...profile, role: e.target.value })}
-              />
-            </FormField>
-
-            <FormField label="Organization / Laboratory Site">
-              <Input
-                value={profile.organization}
-                onChange={(e) => setProfile({ ...profile, organization: e.target.value })}
+                value={currentUser?.email || 'staff@laboratory.com'}
+                disabled
               />
             </FormField>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Assigned Role">
+              <div className="h-10 px-3 flex items-center bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800">
+                {currentUser?.role || 'TECHNICIAN'}
+              </div>
+            </FormField>
+            <FormField label="Security Compliance">
+              <div className="h-10 px-3 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-semibold text-emerald-800">
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>PBKDF2 Salted Auth · JWT Token Bearer</span>
+              </div>
+            </FormField>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Section 3: Laboratory Staff & Role Management (RBAC) */}
+      <Card>
+        <CardHeader
+          title="Laboratory Staff & Role Management (RBAC)"
+          subtitle={
+            isAdmin
+              ? "Review staff accounts and promote technicians to administrators"
+              : "Access control policies and laboratory role assignments"
+          }
+          action={<Users className="w-4 h-4 text-slate-400" />}
+        />
+        <CardContent className="space-y-4">
+          {roleNotice && (
+            <div
+              className={`p-3 rounded-xl flex items-center gap-2.5 text-xs ${
+                roleNotice.type === 'success'
+                  ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+                  : 'bg-rose-50 border border-rose-200 text-rose-800'
+              }`}
+            >
+              {roleNotice.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{roleNotice.message}</span>
+            </div>
+          )}
+
+          {isAdmin ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-slate-500 pb-2 border-b border-slate-100">
+                <span>Registered Staff Members ({staffList.length})</span>
+                <button
+                  type="button"
+                  onClick={loadStaff}
+                  disabled={isLoadingStaff}
+                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStaff ? 'animate-spin' : ''}`} />
+                  <span>Refresh Staff</span>
+                </button>
+              </div>
+
+              {isLoadingStaff ? (
+                <div className="py-6 text-center text-xs text-slate-400">Loading staff registry...</div>
+              ) : staffList.length === 0 ? (
+                <div className="py-6 text-center text-xs text-slate-400">No staff members found.</div>
+              ) : (
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                  {staffList.map((staff) => {
+                    const isSelf = staff.id === currentUser?.id;
+                    const isTargetAdmin = staff.role === 'ADMIN';
+
+                    return (
+                      <div
+                        key={staff.id}
+                        className="p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white hover:bg-slate-50/60 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-slate-900 truncate">
+                              {staff.name}
+                            </span>
+                            {isSelf && (
+                              <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-medium">
+                                (You)
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">{staff.email}</p>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase ${
+                              isTargetAdmin
+                                ? 'bg-purple-100 text-purple-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {staff.role}
+                          </span>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={roleActionId === staff.id}
+                            isLoading={roleActionId === staff.id}
+                            onClick={() => handleToggleRole(staff)}
+                            className="text-xs h-7"
+                          >
+                            {isTargetAdmin ? 'Demote to Technician' : 'Promote to Admin'}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-600">
+              <div className="flex items-center gap-2 font-semibold text-slate-800">
+                <ShieldAlert className="w-4 h-4 text-slate-500" />
+                <span>Role-Based Access Control Active</span>
+              </div>
+              <p>
+                Staff accounts registered publicly default strictly to the <strong>TECHNICIAN</strong> role.
+                Promotion to <strong>ADMIN</strong> requires explicit elevation by an existing administrator.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

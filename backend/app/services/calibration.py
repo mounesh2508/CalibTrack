@@ -20,7 +20,8 @@ def get_calibration_records(
 
 def create_calibration_record(
     db: Session,
-    record_in: CalibrationRecordCreate
+    record_in: CalibrationRecordCreate,
+    user_id: Optional[str] = None
 ) -> CalibrationRecord:
     # 1. Validate equipment exists
     equipment = db.query(Equipment).filter(Equipment.id == record_in.equipment_id).first()
@@ -46,6 +47,7 @@ def create_calibration_record(
         result=record_in.result.upper(),
         remarks=record_in.remarks,
         certificate_file_path=record_in.certificate_file_path,
+        created_by=user_id,
     )
     db.add(db_record)
 
@@ -61,6 +63,7 @@ def create_calibration_record(
     # 5. Automatically create a notification
     notification = Notification(
         equipment_id=equipment.id,
+        user_id=user_id,
         type="CALIBRATION_COMPLETED" if record_in.result.upper() != "FAILED" else "CALIBRATION_OVERDUE",
         title="Calibration Logged",
         message=f"{equipment.name} ({equipment.equipment_code}) calibrated with outcome: {record_in.result.upper()}.",
@@ -71,3 +74,15 @@ def create_calibration_record(
     db.commit()
     db.refresh(db_record)
     return db_record
+
+def delete_calibration_record(db: Session, record_id: str) -> bool:
+    record = db.query(CalibrationRecord).filter(CalibrationRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Calibration record '{record_id}' not found."
+        )
+    db.delete(record)
+    db.commit()
+    return True
+

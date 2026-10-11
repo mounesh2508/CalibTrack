@@ -20,7 +20,13 @@ export const corsMiddleware = cors({
       return callback(null, true);
     }
 
-    if (allowedOrigins.includes(origin) || origin.endsWith('.run.app')) {
+    const frontendUrl = process.env.FRONTEND_URL;
+    if (
+      allowedOrigins.includes(origin) ||
+      (frontendUrl && origin === frontendUrl) ||
+      origin.endsWith('.run.app') ||
+      origin.endsWith('.vercel.app')
+    ) {
       return callback(null, true);
     }
 

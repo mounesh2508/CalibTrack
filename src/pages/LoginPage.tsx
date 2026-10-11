@@ -1,28 +1,55 @@
 import React, { useState } from 'react';
-import { FlaskConical, ShieldCheck, Lock, Mail, ArrowRight } from 'lucide-react';
+import { FlaskConical, ShieldCheck, Lock, Mail, User, ArrowRight, AlertCircle, Info } from 'lucide-react';
 import { Button } from '../components/common/Button';
+import { api } from '../services/api';
+import { AuthUser } from '../types';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (user: AuthUser) => void;
+  sessionNotice?: string | null;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice }) => {
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('admin@calibtrack-lab.com');
-  const [password, setPassword] = useState('••••••••••••');
-  const [rememberMe, setRememberMe] = useState(true);
+  const [password, setPassword] = useState('AdminPass123!');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setIsLoading(true);
-    setTimeout(() => {
+
+    try {
+      if (isRegisterMode) {
+        if (!name.trim()) {
+          setError('Please provide your full staff name.');
+          setIsLoading(false);
+          return;
+        }
+        if (password.length < 8) {
+          setError('Password must be at least 8 characters long.');
+          setIsLoading(false);
+          return;
+        }
+
+        const session = await api.register(name, email, password);
+        onLogin(session.user);
+      } else {
+        const session = await api.login(email, password);
+        onLogin(session.user);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed. Please verify your credentials.');
+    } finally {
       setIsLoading(false);
-      onLogin();
-    }, 450);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
       {/* Subtle Technical Metrology Grid Background */}
       <div
         className="absolute inset-0 opacity-[0.03] pointer-events-none"
@@ -46,9 +73,76 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
           </p>
         </div>
 
-        {/* Login Card */}
+        {/* Auth Card */}
         <div className="mt-8 bg-slate-800/90 border border-slate-700/80 rounded-2xl shadow-2xl p-6 sm:p-8 backdrop-blur-xs">
+          {/* Mode Switch Tabs */}
+          <div className="flex border-b border-slate-700/80 mb-5">
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegisterMode(false);
+                setError(null);
+              }}
+              className={`flex-1 pb-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-px ${
+                !isRegisterMode
+                  ? 'border-blue-500 text-white'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegisterMode(true);
+                setError(null);
+              }}
+              className={`flex-1 pb-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-px ${
+                isRegisterMode
+                  ? 'border-blue-500 text-white'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Register Staff
+            </button>
+          </div>
+
+          {/* Session Expiry or Custom Notice */}
+          {sessionNotice && !error && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
+              <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>{sessionNotice}</span>
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-200">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
+            {isRegisterMode && (
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Full Staff Name
+                </label>
+                <div className="relative">
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Dr. Alexander Wright"
+                    required
+                    className="w-full h-10 pl-9 pr-3 text-sm bg-slate-900 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors"
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
                 Staff Email Address
@@ -59,7 +153,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@laboratory.com"
+                  placeholder="staff@laboratory.com"
                   required
                   className="w-full h-10 pl-9 pr-3 text-sm bg-slate-900 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors"
                 />
@@ -71,13 +165,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={() => alert('Password reset link simulated for administrator.')}
-                  className="text-xs text-blue-400 hover:text-blue-300 font-medium"
-                >
-                  Forgot password?
-                </button>
+                {!isRegisterMode && (
+                  <span className="text-[11px] text-slate-400">Min 8 chars</span>
+                )}
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
@@ -92,36 +182,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                />
-                <span className="text-xs text-slate-300">Remember credentials</span>
-              </label>
-              <span className="text-[11px] font-mono text-slate-400">ISO 17025 Sec</span>
-            </div>
+            {isRegisterMode && (
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Registered staff accounts default to <strong>Technician (Lab Staff)</strong> role.
+                Administrator privileges are granted by system administrators.
+              </p>
+            )}
 
             <Button
               type="submit"
               variant="primary"
               size="lg"
-              className="w-full mt-3 h-11 text-sm font-semibold"
+              className="w-full mt-4 h-11 text-sm font-semibold"
               isLoading={isLoading}
               icon={<ArrowRight className="w-4 h-4" />}
               iconPosition="right"
             >
-              Sign In to CalibTrack
+              {isRegisterMode ? 'Create Staff Account' : 'Sign In to CalibTrack'}
             </Button>
           </form>
 
-          {/* Quick Mock Hint */}
-          <div className="mt-6 pt-5 border-t border-slate-700/60 text-center">
+          {/* Quick Credential Hint */}
+          <div className="mt-6 pt-4 border-t border-slate-700/60 text-center">
             <p className="text-xs text-slate-400">
-              Frontend UI Preview Mode · Click &quot;Sign In&quot; to enter dashboard
+              Lab Staff Portal · JWT Token Bearer Authentication
             </p>
           </div>
         </div>

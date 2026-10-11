@@ -24,7 +24,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { LoadingState } from '../components/common/LoadingState';
 import { Modal } from '../components/common/Modal';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
-import { Equipment } from '../types';
+import { Equipment, AuthUser } from '../types';
 import { api } from '../services/api';
 
 interface EquipmentListPageProps {
@@ -34,6 +34,7 @@ interface EquipmentListPageProps {
   onRefreshList?: () => Promise<void>;
   onDeleteEquipment?: (id: string) => Promise<void>;
   onUpdateEquipment?: (id: string, updates: any) => Promise<void>;
+  currentUser?: AuthUser | null;
 }
 
 export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
@@ -43,6 +44,7 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
   onRefreshList,
   onDeleteEquipment,
   onUpdateEquipment,
+  currentUser,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -561,13 +563,15 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                                     <Edit className="w-3.5 h-3.5 text-slate-400" />
                                     <span>Edit Metadata</span>
                                   </button>
-                                  <button
-                                    onClick={() => handleOpenDelete(eq)}
-                                    className="w-full px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                    <span>Delete Instrument</span>
-                                  </button>
+                                  {currentUser?.role === 'ADMIN' && (
+                                    <button
+                                      onClick={() => handleOpenDelete(eq)}
+                                      className="w-full px-3 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                      <span>Delete Instrument</span>
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             </>

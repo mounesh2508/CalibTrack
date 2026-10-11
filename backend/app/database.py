@@ -4,12 +4,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import QueuePool, StaticPool
 
+# Load environment variables from current directory and backend directory
 load_dotenv()
+backend_env_path = os.path.join(os.path.dirname(__file__), "../.env")
+if os.path.exists(backend_env_path):
+    load_dotenv(backend_env_path, override=True)
 
 Base = declarative_base()
 
 def get_database_url() -> str:
-    # 1. Check direct DATABASE_URL
     url = os.getenv("DATABASE_URL")
     
     # Check if discrete parameters are provided
@@ -18,6 +21,10 @@ def get_database_url() -> str:
     password = os.getenv("DB_PASSWORD")
     name = os.getenv("DB_NAME", "postgres")
     port = os.getenv("DB_PORT", "5432")
+
+    # If host was accidentally entered as a full postgres URL containing [YOUR-PASSWORD]
+    if host and host.startswith("postgresql://") and password and "[YOUR-PASSWORD]" in host:
+        url = host.replace("[YOUR-PASSWORD]", password)
 
     if not url and host and user and password:
         url = f"postgresql://{user}:{password}@{host}:{port}/{name}"
@@ -28,7 +35,7 @@ def get_database_url() -> str:
             print("[Database] Warning: DATABASE_URL contains placeholder password. Falling back to local SQLite.")
             return "sqlite:///./calibtrack_dev.db"
 
-        # Supabase and Heroku use postgres://, SQLAlchemy requires postgresql:// or postgresql+psycopg2://
+        # Supabase and Heroku use postgres://, SQLAlchemy requires postgresql://
         if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql://", 1)
         return url

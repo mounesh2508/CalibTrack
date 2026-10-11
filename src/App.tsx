@@ -20,7 +20,7 @@ import {
   initialRecentActivities,
   initialCalendarEvents,
 } from './data/mockData';
-import { Equipment, CalibrationRecord, NotificationItem, RecentActivity } from './types';
+import { Equipment, CalibrationRecord, NotificationItem, RecentActivity, CalendarEvent, AuthUser } from './types';
 import { api, mapBackendCalibrationToFrontend } from './services/api';
 
 export default function App() {
@@ -29,6 +29,9 @@ export default function App() {
     if (p === '/' || !p) return '/dashboard';
     return p;
   });
+
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => api.getStoredUser());
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
   const [equipmentList, setEquipmentList] = useState<Equipment[]>(initialEquipmentList);
   const [calibrationRecords, setCalibrationRecords] = useState<CalibrationRecord[]>(initialCalibrationRecords);
@@ -67,6 +70,35 @@ export default function App() {
   useEffect(() => {
     loadBackendData();
   }, []);
+
+  // Listen for unauthorized 401 events & verify stored session
+  useEffect(() => {
+    api.setUnauthorizedListener((msg: string) => {
+      setCurrentUser(null);
+      setSessionNotice(msg || 'Your session has expired. Please sign in again.');
+      navigate('/login');
+    });
+
+    if (api.getStoredToken()) {
+      api.fetchCurrentUser()
+        .then((user) => setCurrentUser(user))
+        .catch(() => {
+          api.clearAuthSession();
+          setCurrentUser(null);
+        });
+    }
+
+    return () => {
+      api.setUnauthorizedListener(null);
+    };
+  }, []);
+
+  const handleLogout = () => {
+    api.logout();
+    setCurrentUser(null);
+    setSessionNotice('You have been safely signed out.');
+    navigate('/login');
+  };
 
   // Quick Calibrate Modal state
   const [calibrateTarget, setCalibrateTarget] = useState<Equipment | null>(null);
@@ -313,9 +345,27 @@ export default function App() {
       />
     );
   } else if (currentPath === '/calendar') {
+    const liveCalendarEvents: CalendarEvent[] = equipmentList.map((eq) => ({
+      id: `EVT-${eq.id}`,
+      title: `${eq.name} (${eq.code})`,
+      equipmentId: eq.id,
+      equipmentCode: eq.code,
+      equipmentName: eq.name,
+      date: eq.nextCalibrationDate,
+      type:
+        eq.status === 'overdue'
+          ? 'overdue'
+          : eq.status === 'due_soon'
+          ? 'due_soon'
+          : 'upcoming',
+      provider: 'Metrology Global Solutions ISO 17025',
+      location: `${eq.department} - ${eq.location}`,
+      time: '09:00 AM',
+    }));
+
     pageContent = (
       <CalendarPage
-        calendarEvents={calendarEvents}
+        calendarEvents={liveCalendarEvents.length > 0 ? liveCalendarEvents : calendarEvents}
         onNavigate={navigate}
       />
     );

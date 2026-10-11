@@ -1,8 +1,65 @@
-import { Equipment, CalibrationRecord, NotificationItem } from '../types';
+import { Equipment, CalibrationRecord, NotificationItem, AuthUser, AuthSession } from '../types';
 
 // Use VITE_API_BASE_URL if configured, otherwise default to /api
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
+// -----------------------------------------------------------------------------
+// Session Management & Storage Helpers
+// -----------------------------------------------------------------------------
+const TOKEN_KEY = 'calibtrack_token';
+const USER_KEY = 'calibtrack_user';
+
+export function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {}
+}
+
+export function getStoredUser(): AuthUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user: AuthUser | null): void {
+  try {
+    if (user) {
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(USER_KEY);
+    }
+  } catch {}
+}
+
+export function clearAuthSession(): void {
+  setStoredToken(null);
+  setStoredUser(null);
+}
+
+let unauthorizedListener: ((message: string) => void) | null = null;
+
+export function setUnauthorizedListener(listener: ((message: string) => void) | null) {
+  unauthorizedListener = listener;
+}
+
+// -----------------------------------------------------------------------------
+// Data Contracts & Types
+// -----------------------------------------------------------------------------
 export interface ApiDashboardSummary {
   totalEquipment: number;
   calibratedCount: number;
@@ -49,9 +106,9 @@ export interface CalibrationApiPayload {
   certificate_file_path?: string;
 }
 
-/**
- * Normalizes backend Equipment object (either FastAPI snake_case or Express) to frontend Equipment model
- */
+// -----------------------------------------------------------------------------
+// Data Normalizers
+// -----------------------------------------------------------------------------
 export function mapBackendEquipmentToFrontend(item: any): Equipment {
   const nextDateStr = item.next_calibration_date || item.nextCalibrationDate || null;
   const nextDate = nextDateStr ? new Date(nextDateStr) : null;
@@ -93,29 +150,30 @@ export function mapBackendEquipmentToFrontend(item: any): Equipment {
   };
 }
 
-/**
- * Normalizes backend CalibrationRecord to frontend CalibrationRecord model
- */
 export function mapBackendCalibrationToFrontend(
   item: any,
-  fallbackEquipmentName = 'Laboratory Instrument',
-  fallbackEquipmentCode = 'EQ-ASSET'
+  fallbackEquipmentName = 'Laboratory Instrument'
 ): CalibrationRecord {
-  const rawResult = (item.result || 'PASSED').toUpperCase();
+  const outcomeRaw = (item.result || item.status || 'PASSED').toUpperCase();
   let result: CalibrationRecord['result'] = 'Passed';
-  if (rawResult === 'FAILED') result = 'Failed';
-  else if (rawResult === 'CONDITIONAL') result = 'Passed with Adjustment';
+  if (outcomeRaw === 'FAILED') {
+    result = 'Failed';
+  } else if (outcomeRaw === 'CONDITIONAL' || outcomeRaw === 'PASSED WITH ADJUSTMENT') {
+    result = 'Passed with Adjustment';
+  } else {
+    result = 'Passed';
+  }
 
   return {
     id: String(item.id || `REC-${Date.now()}`),
-    equipmentId: item.equipment_id || item.equipmentId || '',
-    equipmentCode: item.equipment_code || item.equipmentCode || fallbackEquipmentCode,
+    equipmentId: String(item.equipment_id || item.equipmentId || ''),
+    equipmentCode: item.equipment_code || item.equipmentCode || 'EQ-LOGGED',
     equipmentName: item.equipment_name || item.equipmentName || fallbackEquipmentName,
     calibrationDate: item.calibration_date || item.calibrationDate || new Date().toISOString().split('T')[0],
-    nextDueDate: item.next_due_date || item.nextDueDate || new Date().toISOString().split('T')[0],
-    serviceProvider: item.calibration_provider || item.serviceProvider || 'Metrology Global Solutions ISO 17025',
-    technicianName: item.performed_by || item.technicianName || 'Certified Metrologist',
-    certificateNumber: item.certificate_number || item.certificateNumber || `CERT-${item.id || 'VALID'}`,
+    nextDueDate: item.next_due_date || item.nextDueDate || '2026-12-31',
+    serviceProvider: item.calibration_provider || item.serviceProvider || 'Precision Lab Metrology Inc.',
+    technicianName: item.performed_by || item.technicianName || 'Accredited Metrologist',
+    certificateNumber: item.certificate_number || item.certificateNumber || 'CERT-PENDING',
     result,
     standardUsed: item.standard_used || item.standardUsed || 'NIST Traceable Reference Standard',
     environmentalTemp: item.environmental_temp || item.environmentalTemp || '20.5 °C',
@@ -125,9 +183,6 @@ export function mapBackendCalibrationToFrontend(
   };
 }
 
-/**
- * Normalizes backend Dashboard Summary
- */
 export function mapBackendDashboardSummary(data: any): ApiDashboardSummary {
   return {
     totalEquipment: data.total_equipment ?? data.totalEquipment ?? 0,
@@ -147,18 +202,26 @@ export function mapBackendDashboardSummary(data: any): ApiDashboardSummary {
   };
 }
 
-/**
- * Helper to make API requests with clear error handling
- */
+// -----------------------------------------------------------------------------
+// Core Request Handler with Bearer Token Injection & 401/403 Handling
+// -----------------------------------------------------------------------------
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
+  const token = getStoredToken();
+
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...(options.headers || {}),
+    ...(options.headers as Record<string, string> || {}),
   };
+
+  // Automatically attach Bearer token to authenticated requests
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   try {
     const res = await fetch(url, { ...options, headers });
+
     if (!res.ok) {
       let errorMessage = `HTTP Error ${res.status} (${res.statusText})`;
       try {
@@ -167,6 +230,25 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       } catch {
         // use fallback message
       }
+
+      // Handle 401: Unauthorized session (expired or invalid token)
+      if (res.status === 401) {
+        // Do not clear session if the failed request was the login attempt itself
+        if (!endpoint.includes('/auth/login') && !endpoint.includes('/auth/register')) {
+          clearAuthSession();
+          if (unauthorizedListener) {
+            unauthorizedListener(errorMessage || 'Your session has expired. Please sign in again.');
+          }
+        }
+      }
+
+      // Handle 403: Forbidden (insufficient permissions, e.g. technician attempting admin action)
+      if (res.status === 403) {
+        const err = new Error(errorMessage || 'Forbidden: Administrator privileges required.') as any;
+        err.status = 403;
+        throw err;
+      }
+
       const err = new Error(errorMessage) as any;
       err.status = res.status;
       throw err;
@@ -179,17 +261,96 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     return await res.json();
   } catch (error: any) {
     if (error.status) throw error;
-    throw new Error(`Unable to communicate with CalibTrack API at ${url}. Please ensure the server is running.`);
+    throw new Error(`Unable to communicate with CalibTrack API at ${url}. Please ensure the backend is running.`);
   }
 }
 
-/**
- * Centralized API Service for CalibTrack
- */
+// -----------------------------------------------------------------------------
+// Centralized API Service for CalibTrack
+// -----------------------------------------------------------------------------
 export const api = {
+  // Session helpers
+  getStoredToken,
+  setStoredToken,
+  getStoredUser,
+  setStoredUser,
+  clearAuthSession,
+
   // Health
   async fetchHealth(): Promise<{ status: string }> {
     return request<{ status: string }>('/health');
+  },
+
+  // Authentication
+  async login(email: string, password: string): Promise<AuthSession> {
+    const res = await request<any>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+
+    const session: AuthSession = {
+      token: res.access_token,
+      user: {
+        id: res.user.id,
+        name: res.user.name,
+        email: res.user.email,
+        role: res.user.role,
+        created_at: res.user.created_at,
+      },
+      expiresAt: res.expires_at,
+    };
+
+    setStoredToken(session.token);
+    setStoredUser(session.user);
+    return session;
+  },
+
+  async register(name: string, email: string, password: string): Promise<AuthSession> {
+    const res = await request<any>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+      }),
+    });
+
+    const session: AuthSession = {
+      token: res.access_token,
+      user: {
+        id: res.user.id,
+        name: res.user.name,
+        email: res.user.email,
+        role: res.user.role,
+        created_at: res.user.created_at,
+      },
+      expiresAt: res.expires_at,
+    };
+
+    setStoredToken(session.token);
+    setStoredUser(session.user);
+    return session;
+  },
+
+  async fetchCurrentUser(): Promise<AuthUser> {
+    const user = await request<AuthUser>('/auth/me');
+    setStoredUser(user);
+    return user;
+  },
+
+  async listUsers(): Promise<AuthUser[]> {
+    return request<AuthUser[]>('/users');
+  },
+
+  async updateUserRole(userId: string, role: 'ADMIN' | 'TECHNICIAN'): Promise<AuthUser> {
+    return request<AuthUser>(`/users/${encodeURIComponent(userId)}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  },
+
+  logout(): void {
+    clearAuthSession();
   },
 
   // Dashboard
@@ -223,7 +384,6 @@ export const api = {
     const query = params.toString() ? `?${params.toString()}` : '';
     const raw = await request<any>(`/equipment${query}`);
 
-    // Handles both FastAPI { total, items } and Express { success, count, data }
     const rawList = raw.items || raw.data || (Array.isArray(raw) ? raw : []);
     const total = raw.total ?? raw.count ?? rawList.length;
 
@@ -336,5 +496,32 @@ export const api = {
     } catch {
       // Fallback
     }
+  },
+
+  // Reminder Settings
+  async fetchReminderSettings(): Promise<{
+    reminder_days_before: number;
+    email_enabled: boolean;
+    in_app_enabled: boolean;
+    smtp_configured: boolean;
+  }> {
+    return request<any>('/reminders/settings');
+  },
+
+  async updateReminderSettings(payload: {
+    reminder_days_before?: number;
+    email_enabled?: boolean;
+    in_app_enabled?: boolean;
+  }): Promise<any> {
+    return request<any>('/reminders/settings', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async triggerReminders(): Promise<any> {
+    return request<any>('/reminders/trigger', {
+      method: 'POST',
+    });
   },
 };

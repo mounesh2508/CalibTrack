@@ -22,7 +22,7 @@ import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Modal } from '../components/common/Modal';
-import { Equipment, CalibrationRecord } from '../types';
+import { Equipment, CalibrationRecord, AuthUser } from '../types';
 import { api } from '../services/api';
 
 interface EquipmentDetailsPageProps {
@@ -33,6 +33,7 @@ interface EquipmentDetailsPageProps {
   onOpenCalibrateModal?: (eq: Equipment) => void;
   onDeleteEquipment?: (id: string) => Promise<void>;
   onRefreshList?: () => Promise<void>;
+  currentUser?: AuthUser | null;
 }
 
 export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
@@ -43,6 +44,7 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
   onOpenCalibrateModal,
   onDeleteEquipment,
   onRefreshList,
+  currentUser,
 }) => {
   const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [history, setHistory] = useState<CalibrationRecord[]>([]);
@@ -202,16 +204,17 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsDeleteModalOpen(true)}
-            icon={<Trash2 className="w-4 h-4 text-rose-500" />}
-            className="text-rose-600 hover:bg-rose-50 border-rose-200"
-          >
-            Delete
-          </Button>
+          {currentUser?.role === 'ADMIN' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDeleteModalOpen(true)}
+              icon={<Trash2 className="w-4 h-4 text-rose-500" />}
+              className="text-rose-600 hover:bg-rose-50 border-rose-200"
+            >
+              Delete
+            </Button>
+          )}
           <Button
             variant="primary"
             size="sm"

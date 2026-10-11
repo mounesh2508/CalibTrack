@@ -14,6 +14,8 @@ import {
   FlaskConical,
 } from 'lucide-react';
 
+import { AuthUser } from '../../types';
+
 interface SidebarProps {
   currentPath: string;
   onNavigate: (path: string) => void;
@@ -22,6 +24,8 @@ interface SidebarProps {
   mobileOpen: boolean;
   onMobileClose: () => void;
   unreadCount: number;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
 }
 
 interface NavItem {
@@ -178,23 +182,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           <div className="flex items-center gap-3 min-w-0">
             <div className="relative shrink-0">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-700 to-indigo-500 text-white flex items-center justify-center font-semibold text-xs border border-slate-700">
-                AU
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-700 to-indigo-500 text-white flex items-center justify-center font-semibold text-xs border border-slate-700 uppercase">
+                {currentUser?.name ? currentUser.name.slice(0, 2) : 'AU'}
               </div>
               <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-slate-900" />
             </div>
 
             {!isCollapsed && (
               <div className="min-w-0">
-                <p className="text-xs font-semibold text-white truncate">Admin User</p>
-                <p className="text-[11px] text-slate-400 truncate">Administrator</p>
+                <p className="text-xs font-semibold text-white truncate">
+                  {currentUser?.name || 'Staff User'}
+                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className={`inline-block px-1.5 py-0.2 rounded text-[9px] font-semibold tracking-wider uppercase ${
+                      currentUser?.role === 'ADMIN'
+                        ? 'bg-purple-900/80 text-purple-200 border border-purple-700/50'
+                        : 'bg-blue-900/80 text-blue-200 border border-blue-700/50'
+                    }`}
+                  >
+                    {currentUser?.role || 'TECHNICIAN'}
+                  </span>
+                </div>
               </div>
             )}
           </div>
 
-          {!isCollapsed && (
+          {!isCollapsed && onLogout && (
             <button
-              onClick={() => onNavigate('/login')}
+              onClick={onLogout}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
               title="Sign Out"
             >

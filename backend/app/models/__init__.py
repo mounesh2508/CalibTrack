@@ -3,6 +3,7 @@ from backend.app.models.equipment import Equipment
 from backend.app.models.calibration import CalibrationRecord
 from backend.app.models.notification import Notification
 from backend.app.models.reminder_settings import ReminderSettings
+from backend.app.models.reminder_log import ReminderLog
 
 __all__ = [
     "User",
@@ -10,4 +11,5 @@ __all__ = [
     "CalibrationRecord",
     "Notification",
     "ReminderSettings",
+    "ReminderLog",
 ]

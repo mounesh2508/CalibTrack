@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Menu, Search, Bell, Plus, Check } from 'lucide-react';
+import { Menu, Search, Bell, Plus, Check, LogOut, Shield } from 'lucide-react';
 import { Button } from '../common/Button';
-import { NotificationItem, Equipment } from '../../types';
+import { NotificationItem, Equipment, AuthUser } from '../../types';
 
 interface HeaderProps {
   currentPath: string;
@@ -9,6 +9,8 @@ interface HeaderProps {
   onOpenMobileSidebar: () => void;
   notifications: NotificationItem[];
   equipmentList: Equipment[];
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,6 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileSidebar,
   notifications,
   equipmentList,
+  currentUser,
+  onLogout,
 }) => {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -179,19 +183,43 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* User Avatar */}
-          <div
-            onClick={() => onNavigate('/settings')}
-            className="flex items-center gap-2 pl-2 border-l border-slate-200 cursor-pointer group"
-            title="Account & System Settings"
-          >
-            <div className="w-8 h-8 rounded-full bg-blue-600/10 text-blue-700 font-semibold text-xs flex items-center justify-center border border-blue-200/80 group-hover:border-blue-400 transition-colors">
-              AU
+          {/* User Profile & Role Badge */}
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+            <div
+              onClick={() => onNavigate('/settings')}
+              className="flex items-center gap-2 cursor-pointer group"
+              title="Account Settings"
+            >
+              <div className="w-8 h-8 rounded-full bg-blue-600/10 text-blue-700 font-semibold text-xs flex items-center justify-center border border-blue-200/80 group-hover:border-blue-400 transition-colors uppercase">
+                {currentUser?.name ? currentUser.name.slice(0, 2) : 'AU'}
+              </div>
+              <div className="hidden xl:block text-left">
+                <p className="text-xs font-semibold text-slate-800 leading-none">
+                  {currentUser?.name || 'Staff User'}
+                </p>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span
+                    className={`inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold tracking-wider uppercase ${
+                      currentUser?.role === 'ADMIN'
+                        ? 'bg-purple-100 text-purple-700'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}
+                  >
+                    {currentUser?.role || 'TECHNICIAN'}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="hidden xl:block text-left">
-              <p className="text-xs font-semibold text-slate-800 leading-none">Admin User</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">QA Metrologist</p>
-            </div>
+
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 transition-colors ml-1"
+                title="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       </header>

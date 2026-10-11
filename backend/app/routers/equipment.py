@@ -17,6 +17,8 @@ from backend.app.services.equipment import (
     delete_equipment,
 )
 from backend.app.services.calibration import get_calibration_records
+from backend.app.models.user import User
+from backend.app.dependencies import require_staff, require_admin
 
 router = APIRouter(prefix="/equipment", tags=["Equipment"])
 
@@ -52,9 +54,14 @@ def list_equipment(
 @router.post("", response_model=EquipmentResponse, status_code=status.HTTP_201_CREATED)
 def create_new_equipment(
     equip_in: EquipmentCreate,
+    current_user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
-    return create_equipment(db, equip_in)
+    """
+    Registers new laboratory equipment.
+    SECURITY: Requires authenticated staff (TECHNICIAN or ADMIN).
+    """
+    return create_equipment(db, equip_in, user_id=current_user.id)
 
 @router.get("/{equipment_id}", response_model=EquipmentResponse)
 def get_single_equipment(
@@ -74,15 +81,25 @@ def get_single_equipment(
 def update_existing_equipment(
     equipment_id: str,
     equip_in: EquipmentUpdate,
+    current_user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
+    """
+    Updates existing equipment details.
+    SECURITY: Requires authenticated staff (TECHNICIAN or ADMIN).
+    """
     return update_equipment(db, equipment_id, equip_in)
 
 @router.delete("/{equipment_id}", status_code=status.HTTP_200_OK)
 def delete_existing_equipment(
     equipment_id: str,
+    current_admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    """
+    Deletes an equipment item and cascades all associated calibration logs.
+    SECURITY: Strictly requires ADMIN role. TECHNICIAN users are rejected with 403.
+    """
     delete_equipment(db, equipment_id)
     return {"success": True, "message": f"Equipment '{equipment_id}' deleted successfully."}
 

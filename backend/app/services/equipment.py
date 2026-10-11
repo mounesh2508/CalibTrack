@@ -54,7 +54,7 @@ def get_equipment_by_id(db: Session, equipment_id: str) -> Optional[Equipment]:
         or_(Equipment.id == equipment_id, Equipment.equipment_code == equipment_id)
     ).first()
 
-def create_equipment(db: Session, equip_in: EquipmentCreate) -> Equipment:
+def create_equipment(db: Session, equip_in: EquipmentCreate, user_id: Optional[str] = None) -> Equipment:
     # Check duplicate code
     existing = db.query(Equipment).filter(Equipment.equipment_code == equip_in.equipment_code.strip()).first()
     if existing:
@@ -86,6 +86,7 @@ def create_equipment(db: Session, equip_in: EquipmentCreate) -> Equipment:
         next_calibration_date=next_calib_date,
         status=calculated_status,
         description=equip_in.description,
+        created_by=user_id,
     )
     db.add(db_item)
     db.commit()

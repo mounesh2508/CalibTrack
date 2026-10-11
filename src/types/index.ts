@@ -75,3 +75,17 @@ export interface CalendarEvent {
   location: string;
   time?: string;
 }
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'ADMIN' | 'TECHNICIAN';
+  created_at?: string;
+}
+
+export interface AuthSession {
+  token: string;
+  user: AuthUser;
+  expiresAt?: string;
+}
