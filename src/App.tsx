@@ -1,19 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { AppLayout } from './components/layout/AppLayout';
-import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EquipmentListPage } from './pages/EquipmentListPage';
-import { AddEquipmentPage } from './pages/AddEquipmentPage';
 import { EquipmentDetailsPage } from './pages/EquipmentDetailsPage';
+import { AddEquipmentPage } from './pages/AddEquipmentPage';
 import { CalibrationPage } from './pages/CalibrationPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { NotificationsPage } from './pages/NotificationsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { LoginPage } from './pages/LoginPage';
 import { Modal } from './components/common/Modal';
 import { FormField, Input, Select, Textarea } from './components/common/FormField';
 import { Button } from './components/common/Button';
-
 import {
   initialEquipmentList,
   initialCalibrationRecords,
@@ -38,42 +37,34 @@ export default function App() {
   const [calendarEvents, setCalendarEvents] = useState(initialCalendarEvents);
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
 
-  // Sync with backend API on mount
-  useEffect(() => {
-    async function loadBackendData() {
-      try {
-        const [backendEquip, backendNotifs, backendCalib] = await Promise.all([
-          api.getEquipmentList().catch(() => null),
-          api.getNotifications().catch(() => null),
-          api.getCalibrationRecords().catch(() => null),
-        ]);
+  // Sync with backend API
+  const loadBackendData = async () => {
+    try {
+      const [equipData, notifsData, calibData] = await Promise.all([
+        api.fetchEquipment().catch(() => null),
+        api.fetchNotifications().catch(() => null),
+        api.fetchCalibrationRecords().catch(() => null),
+      ]);
 
-        if (backendEquip && backendEquip.length > 0) {
-          setEquipmentList(backendEquip);
-          setApiConnected(true);
-        }
-
-        if (backendNotifs && backendNotifs.length > 0) {
-          setNotifications(backendNotifs);
-        }
-
-        if (backendCalib && backendCalib.length > 0) {
-          const mapped = backendCalib.map((rec) => {
-            const eq = backendEquip?.find((e) => e.id === rec.equipment_id);
-            return mapBackendCalibrationToFrontend(
-              rec,
-              eq?.name || 'Laboratory Instrument',
-              eq?.code || 'EQ-ASSET'
-            );
-          });
-          setCalibrationRecords(mapped);
-        }
-      } catch (err) {
-        console.warn('[CalibTrack] Using client fallback data state:', err);
-        setApiConnected(false);
+      if (equipData && equipData.items && equipData.items.length > 0) {
+        setEquipmentList(equipData.items);
+        setApiConnected(true);
       }
-    }
 
+      if (notifsData && notifsData.items && notifsData.items.length > 0) {
+        setNotifications(notifsData.items);
+      }
+
+      if (calibData && calibData.length > 0) {
+        setCalibrationRecords(calibData);
+      }
+    } catch (err) {
+      console.warn('[CalibTrack] Using client fallback data state:', err);
+      setApiConnected(false);
+    }
+  };
+
+  useEffect(() => {
     loadBackendData();
   }, []);
 
@@ -106,28 +97,8 @@ export default function App() {
   };
 
   const handleAddEquipment = async (newEquip: Equipment) => {
-    // 1. Optimistic update in UI
+    // Optimistic update
     setEquipmentList((prev) => [newEquip, ...prev]);
-
-    // 2. Call backend API
-    try {
-      await api.createEquipment({
-        equipment_code: newEquip.code,
-        name: newEquip.name,
-        category: newEquip.category,
-        manufacturer: newEquip.manufacturer,
-        model_number: newEquip.model,
-        serial_number: newEquip.serialNumber,
-        location: newEquip.location,
-        department: newEquip.department,
-        purchase_date: newEquip.purchaseDate,
-        calibration_interval_days: newEquip.calibrationIntervalMonths * 30,
-        last_calibration_date: newEquip.lastCalibrationDate,
-        description: newEquip.description,
-      });
-    } catch (err) {
-      console.warn('[API] Saved to local state, backend sync error:', err);
-    }
 
     // Add recent activity
     const activity: RecentActivity = {
@@ -152,13 +123,28 @@ export default function App() {
       equipmentId: newEquip.id,
     };
     setNotifications((prev) => [notif, ...prev]);
+
+    // Refresh from database
+    await loadBackendData();
+  };
+
+  const handleUpdateEquipment = async (id: string, updates: any) => {
+    await api.updateEquipment(id, updates);
+    await loadBackendData();
+  };
+
+  const handleDeleteEquipment = async (id: string) => {
+    await api.deleteEquipment(id);
+    setEquipmentList((prev) => prev.filter((e) => e.id !== id && e.code !== id));
+    setCalibrationRecords((prev) => prev.filter((r) => r.equipmentId !== id));
+    await loadBackendData();
   };
 
   const handleAddCalibrationRecord = async (record: CalibrationRecord) => {
-    // 1. Optimistic update
+    // Optimistic update
     setCalibrationRecords((prev) => [record, ...prev]);
 
-    // Update corresponding equipment in local state
+    // Update equipment dates
     setEquipmentList((prev) =>
       prev.map((eq) => {
         if (eq.id === record.equipmentId || eq.code === record.equipmentCode) {
@@ -177,29 +163,6 @@ export default function App() {
       })
     );
 
-    // 2. Call backend API
-    try {
-      const dbResult =
-        record.result === 'Failed'
-          ? 'FAILED'
-          : record.result === 'Passed with Adjustment'
-          ? 'CONDITIONAL'
-          : 'PASSED';
-
-      await api.createCalibrationRecord({
-        equipment_id: record.equipmentId,
-        calibration_date: record.calibrationDate,
-        next_due_date: record.nextDueDate,
-        performed_by: record.technicianName,
-        calibration_provider: record.serviceProvider,
-        certificate_number: record.certificateNumber,
-        result: dbResult,
-        remarks: record.remarks,
-      });
-    } catch (err) {
-      console.warn('[API] Saved to local state, backend sync error:', err);
-    }
-
     // Add recent activity
     const activity: RecentActivity = {
       id: `ACT-${Date.now()}`,
@@ -211,6 +174,8 @@ export default function App() {
       equipmentCode: record.equipmentCode,
     };
     setRecentActivities((prev) => [activity, ...prev]);
+
+    await loadBackendData();
   };
 
   const handleOpenCalibrateModal = (eq: Equipment) => {
@@ -224,7 +189,7 @@ export default function App() {
     });
   };
 
-  const handleQuickCalibrateSubmit = (e: React.FormEvent) => {
+  const handleQuickCalibrateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!calibrateTarget) return;
 
@@ -232,36 +197,61 @@ export default function App() {
     nextDate.setMonth(nextDate.getMonth() + calibrateTarget.calibrationIntervalMonths);
     const nextDueDateStr = nextDate.toISOString().split('T')[0];
 
-    const newRecord: CalibrationRecord = {
-      id: `REC-${Date.now()}`,
-      equipmentId: calibrateTarget.id,
-      equipmentCode: calibrateTarget.code,
-      equipmentName: calibrateTarget.name,
-      calibrationDate: calibrateForm.date,
-      nextDueDate: nextDueDateStr,
-      serviceProvider: calibrateForm.provider,
-      technicianName: 'Alan Croft, Senior Metrologist',
-      certificateNumber: calibrateForm.certNumber || `CERT-${calibrateTarget.code}-99`,
-      result: calibrateForm.result,
-      standardUsed: calibrateTarget.calibrationStandard || 'NIST Traceable Reference',
-      environmentalTemp: '21.0 °C',
-      environmentalHumidity: '45 % RH',
-      remarks: calibrateForm.remarks,
-      status: 'Completed',
-    };
+    const dbResult =
+      calibrateForm.result === 'Failed'
+        ? 'FAILED'
+        : calibrateForm.result === 'Passed with Adjustment'
+        ? 'CONDITIONAL'
+        : 'PASSED';
 
-    handleAddCalibrationRecord(newRecord);
+    try {
+      const result = await api.createCalibrationRecord({
+        equipment_id: calibrateTarget.id,
+        calibration_date: calibrateForm.date,
+        next_due_date: nextDueDateStr,
+        performed_by: 'Alan Croft, Senior Metrologist',
+        calibration_provider: calibrateForm.provider,
+        certificate_number: calibrateForm.certNumber || `CERT-${calibrateTarget.code}-99`,
+        result: dbResult,
+        remarks: calibrateForm.remarks,
+      });
+
+      handleAddCalibrationRecord(result.record);
+    } catch {
+      // Fallback
+      const newRecord: CalibrationRecord = {
+        id: `REC-${Date.now()}`,
+        equipmentId: calibrateTarget.id,
+        equipmentCode: calibrateTarget.code,
+        equipmentName: calibrateTarget.name,
+        calibrationDate: calibrateForm.date,
+        nextDueDate: nextDueDateStr,
+        serviceProvider: calibrateForm.provider,
+        technicianName: 'Alan Croft, Senior Metrologist',
+        certificateNumber: calibrateForm.certNumber || `CERT-${calibrateTarget.code}-99`,
+        result: calibrateForm.result,
+        standardUsed: calibrateTarget.calibrationStandard || 'NIST Traceable Reference',
+        environmentalTemp: '21.0 °C',
+        environmentalHumidity: '45 % RH',
+        remarks: calibrateForm.remarks,
+        status: 'Completed',
+      };
+      handleAddCalibrationRecord(newRecord);
+    }
+
     setCalibrateTarget(null);
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    await api.markAllNotificationsRead();
   };
 
-  const handleMarkAsRead = (id: string) => {
+  const handleMarkAsRead = async (id: string) => {
     setNotifications((prev) =>
       prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
+    await api.markNotificationRead(id);
   };
 
   // If path is /login, show the Login Page directly without the app shell
@@ -287,6 +277,9 @@ export default function App() {
         equipmentList={equipmentList}
         onNavigate={navigate}
         onOpenCalibrateModal={handleOpenCalibrateModal}
+        onRefreshList={loadBackendData}
+        onDeleteEquipment={handleDeleteEquipment}
+        onUpdateEquipment={handleUpdateEquipment}
       />
     );
   } else if (currentPath === '/equipment/new') {
@@ -305,6 +298,8 @@ export default function App() {
         calibrationRecords={calibrationRecords}
         onNavigate={navigate}
         onOpenCalibrateModal={handleOpenCalibrateModal}
+        onDeleteEquipment={handleDeleteEquipment}
+        onRefreshList={loadBackendData}
       />
     );
   } else if (currentPath === '/calibration') {
@@ -314,6 +309,7 @@ export default function App() {
         calibrationRecords={calibrationRecords}
         onAddCalibrationRecord={handleAddCalibrationRecord}
         onNavigate={navigate}
+        onRefreshRecords={loadBackendData}
       />
     );
   } else if (currentPath === '/calendar') {
@@ -362,85 +358,86 @@ export default function App() {
     >
       {pageContent}
 
-      {/* Global Quick Calibrate Modal */}
+      {/* Quick Calibrate Modal */}
       {calibrateTarget && (
         <Modal
-          isOpen={!!calibrateTarget}
+          isOpen={true}
           onClose={() => setCalibrateTarget(null)}
-          title={`Log Calibration: ${calibrateTarget.name}`}
-          subtitle={`Asset ID: ${calibrateTarget.code} · ${calibrateTarget.department}`}
-          maxWidth="md"
+          title={`Quick Calibrate: ${calibrateTarget.name} (${calibrateTarget.code})`}
         >
           <form onSubmit={handleQuickCalibrateSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <FormField label="Calibration Date" required>
+            <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg text-xs space-y-1 text-slate-700">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Department:</span>
+                <span className="font-semibold">{calibrateTarget.department}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Location:</span>
+                <span className="font-medium">{calibrateTarget.location}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Cycle:</span>
+                <span className="font-medium">Every {calibrateTarget.calibrationIntervalMonths} Months</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <FormField label="Verification Date" required>
                 <Input
                   type="date"
                   value={calibrateForm.date}
-                  onChange={(e) =>
-                    setCalibrateForm({ ...calibrateForm, date: e.target.value })
-                  }
+                  onChange={(e) => setCalibrateForm({ ...calibrateForm, date: e.target.value })}
+                  required
                 />
               </FormField>
 
-              <FormField label="Result" required>
+              <FormField label="Calibration Outcome" required>
                 <Select
                   value={calibrateForm.result}
-                  onChange={(e) =>
-                    setCalibrateForm({
-                      ...calibrateForm,
-                      result: e.target.value as CalibrationRecord['result'],
-                    })
-                  }
+                  onChange={(e) => setCalibrateForm({ ...calibrateForm, result: e.target.value as any })}
                 >
-                  <option value="Passed">Passed</option>
+                  <option value="Passed">Passed (Fully Compliant)</option>
                   <option value="Passed with Adjustment">Passed with Adjustment</option>
-                  <option value="Failed">Failed</option>
-                  <option value="Limited Use">Limited Use</option>
+                  <option value="Failed">Failed (Quarantined)</option>
                 </Select>
               </FormField>
             </div>
 
-            <FormField label="Certificate Number" required>
-              <Input
-                value={calibrateForm.certNumber}
-                onChange={(e) =>
-                  setCalibrateForm({ ...calibrateForm, certNumber: e.target.value })
-                }
-                className="font-mono text-xs"
-              />
-            </FormField>
-
-            <FormField label="Service Provider" required>
+            <FormField label="Accredited Provider" required>
               <Input
                 value={calibrateForm.provider}
-                onChange={(e) =>
-                  setCalibrateForm({ ...calibrateForm, provider: e.target.value })
-                }
+                onChange={(e) => setCalibrateForm({ ...calibrateForm, provider: e.target.value })}
+                required
               />
             </FormField>
 
-            <FormField label="Technician Remarks">
+            <FormField label="Certificate / Log #" required>
+              <Input
+                value={calibrateForm.certNumber}
+                onChange={(e) => setCalibrateForm({ ...calibrateForm, certNumber: e.target.value })}
+                required
+              />
+            </FormField>
+
+            <FormField label="Remarks & Calibration Tolerances">
               <Textarea
                 rows={2}
                 value={calibrateForm.remarks}
-                onChange={(e) =>
-                  setCalibrateForm({ ...calibrateForm, remarks: e.target.value })
-                }
+                onChange={(e) => setCalibrateForm({ ...calibrateForm, remarks: e.target.value })}
               />
             </FormField>
 
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
               <Button
-                type="button"
                 variant="outline"
                 size="sm"
+                type="button"
                 onClick={() => setCalibrateTarget(null)}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="primary" size="sm">
-                Confirm & Log Calibration
+              <Button variant="primary" size="sm" type="submit">
+                Complete Calibration
               </Button>
             </div>
           </form>

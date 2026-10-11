@@ -7,6 +7,12 @@ export class DashboardController {
       const summary = await dashboardService.getSummary();
       res.json({
         success: true,
+        total_equipment: summary.totalEquipment,
+        calibrated_count: summary.calibratedCount,
+        due_soon_count: summary.dueSoonCount,
+        overdue_count: summary.overdueCount,
+        upcoming_calibrations: summary.upcomingCalibrationRecords,
+        recent_calibration_activity: summary.recentCalibrationRecords,
         data: summary,
       });
     } catch (error) {

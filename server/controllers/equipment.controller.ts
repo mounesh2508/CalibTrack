@@ -15,6 +15,8 @@ export class EquipmentController {
       res.json({
         success: true,
         count: items.length,
+        total: items.length,
+        items: items,
         data: items,
       });
     } catch (error) {

@@ -5,10 +5,14 @@ export class NotificationController {
   async getAll(req: Request, res: Response, Next: NextFunction) {
     try {
       const items = await notificationService.list();
+      const unread = items.filter((n) => !n.is_read).length;
       res.json({
         success: true,
         count: items.length,
-        unreadCount: items.filter((n) => !n.is_read).length,
+        total: items.length,
+        unreadCount: unread,
+        unread_count: unread,
+        items: items,
         data: items,
       });
     } catch (error) {

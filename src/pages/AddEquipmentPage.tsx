@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Save, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Save, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
 import { Equipment } from '../types';
+import { api } from '../services/api';
 
 interface AddEquipmentPageProps {
   onNavigate: (path: string) => void;
-  onAddEquipment: (newEquipment: Equipment) => void;
+  onAddEquipment: (newEquipment: Equipment) => void | Promise<void>;
 }
 
 export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
@@ -31,6 +32,7 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [backendError, setBackendError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -47,55 +49,43 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBackendError(null);
     if (!validate()) return;
 
     setIsSubmitting(true);
 
-    // Calculate next calibration date roughly
-    const lastDate = new Date(formData.lastCalibrationDate);
-    const nextDate = new Date(lastDate);
-    nextDate.setMonth(nextDate.getMonth() + Number(formData.calibrationIntervalMonths));
-    const nextCalibrationDateStr = nextDate.toISOString().split('T')[0];
+    try {
+      // 1. Send to backend API
+      const createdItem = await api.createEquipment({
+        equipment_code: formData.code.trim(),
+        name: formData.name.trim(),
+        category: formData.category,
+        manufacturer: formData.manufacturer.trim(),
+        model_number: formData.model.trim(),
+        serial_number: formData.serialNumber.trim(),
+        location: formData.location.trim(),
+        department: formData.department,
+        purchase_date: formData.purchaseDate,
+        calibration_interval_days: Number(formData.calibrationIntervalMonths) * 30,
+        last_calibration_date: formData.lastCalibrationDate,
+        description: formData.description.trim() || undefined,
+      });
 
-    const today = new Date();
-    const diffTime = nextDate.getTime() - today.getTime();
-    const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      // 2. Notify parent state
+      await onAddEquipment(createdItem);
 
-    let status: Equipment['status'] = 'calibrated';
-    if (daysRemaining < 0) status = 'overdue';
-    else if (daysRemaining <= 30) status = 'due_soon';
-
-    const newEquip: Equipment = {
-      id: `EQ-${Date.now().toString().slice(-4)}`,
-      code: formData.code,
-      name: formData.name,
-      category: formData.category,
-      manufacturer: formData.manufacturer,
-      model: formData.model,
-      serialNumber: formData.serialNumber,
-      department: formData.department,
-      location: formData.location,
-      purchaseDate: formData.purchaseDate,
-      calibrationIntervalMonths: Number(formData.calibrationIntervalMonths),
-      lastCalibrationDate: formData.lastCalibrationDate,
-      nextCalibrationDate: nextCalibrationDateStr,
-      daysRemaining,
-      status,
-      assignedTechnician: formData.assignedTechnician,
-      description: formData.description || 'Newly registered laboratory equipment in validation cycle.',
-      tolerance: formData.tolerance,
-    };
-
-    setTimeout(() => {
-      setIsSubmitting(false);
       setIsSuccess(true);
-      onAddEquipment(newEquip);
       setTimeout(() => {
         onNavigate('/equipment');
-      }, 900);
-    }, 500);
+      }, 700);
+    } catch (err: any) {
+      console.error('[AddEquipment] Backend error:', err);
+      setBackendError(err.message || 'Failed to register equipment. Please check input parameters.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -109,202 +99,173 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
             onClick={() => onNavigate('/equipment')}
             icon={<ArrowLeft className="w-4 h-4" />}
           >
-            Back
+            Equipment
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-              Register Equipment
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              Register New Laboratory Instrument
             </h1>
             <p className="text-xs text-slate-500 mt-0.5">
-              Enter metrological specifications and calibration parameters.
+              Input metrological specifications, tolerance limits, and calibration intervals.
             </p>
           </div>
         </div>
       </div>
 
+      {/* Backend Error Alert */}
+      {backendError && (
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h3 className="text-sm font-semibold text-rose-900">Registration Error</h3>
+            <p className="text-xs text-rose-700 mt-0.5">{backendError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Success Notification */}
       {isSuccess && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 text-emerald-800 text-sm">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
           <div>
-            <p className="font-semibold">Equipment registered successfully!</p>
+            <h3 className="text-sm font-semibold text-emerald-900">Instrument Registered Successfully!</h3>
             <p className="text-xs text-emerald-700">Redirecting to equipment registry...</p>
           </div>
         </div>
       )}
 
-      {/* Main Form */}
+      {/* Form Container */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Section 1: Equipment Information */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200/90 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">
-                1. Equipment Information
-              </h3>
-              <p className="text-xs text-slate-500">
-                Primary identifier and manufacturer attributes
-              </p>
-            </div>
-            <span className="text-xs font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
-              MET-REG-SPEC
-            </span>
+        {/* Section 1: Basic Information */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+          <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-800">
+              1. Instrument Identification
+            </h2>
+            <span className="text-[11px] text-slate-400">* Required fields</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Equipment Name" required error={errors.name}>
+            <FormField label="Instrument Name" error={errors.name} required>
               <Input
                 placeholder="e.g. Analytical Balance XPR205"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                error={!!errors.name}
               />
             </FormField>
 
-            <FormField
-              label="Equipment Code"
-              required
-              error={errors.code}
-              helperText="Unique internal asset identification code"
-            >
+            <FormField label="Equipment Asset Code" error={errors.code} required>
               <Input
-                placeholder="EQ-2026-XXX"
+                placeholder="e.g. EQ-2026-101"
                 value={formData.code}
                 onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                error={!!errors.code}
-                className="font-mono"
               />
             </FormField>
 
-            <FormField label="Category" required>
+            <FormField label="Equipment Category" required>
               <Select
                 value={formData.category}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    category: e.target.value as Equipment['category'],
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
               >
                 <option value="Balances & Scales">Balances & Scales</option>
                 <option value="Spectroscopy">Spectroscopy</option>
                 <option value="Centrifuges">Centrifuges</option>
                 <option value="Electrochemistry">Electrochemistry</option>
-                <option value="Thermal & Environmental">Thermal & Environmental</option>
                 <option value="Chromatography">Chromatography</option>
+                <option value="Thermal & Environmental">Thermal & Environmental</option>
                 <option value="Sterilization">Sterilization</option>
               </Select>
             </FormField>
 
-            <FormField label="Manufacturer" required error={errors.manufacturer}>
+            <FormField label="Laboratory Department" required>
+              <Select
+                value={formData.department}
+                onChange={(e) => setFormData({ ...formData, department: e.target.value as any })}
+              >
+                <option value="Analytical Chemistry">Analytical Chemistry</option>
+                <option value="Quality Control">Quality Control</option>
+                <option value="Bioassay">Bioassay</option>
+                <option value="Microbiology">Microbiology</option>
+                <option value="R&D Formulation">R&D Formulation</option>
+              </Select>
+            </FormField>
+          </div>
+        </div>
+
+        {/* Section 2: Technical Specifications */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+          <div className="pb-3 border-b border-slate-100">
+            <h2 className="text-sm font-semibold text-slate-800">
+              2. Technical & Manufacturer Specifications
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <FormField label="Manufacturer / OEM" error={errors.manufacturer} required>
               <Input
-                placeholder="e.g. Mettler Toledo, Shimadzu, Thermo Scientific"
+                placeholder="e.g. Mettler Toledo"
                 value={formData.manufacturer}
-                onChange={(e) =>
-                  setFormData({ ...formData, manufacturer: e.target.value })
-                }
-                error={!!errors.manufacturer}
+                onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
               />
             </FormField>
 
-            <FormField label="Model Number" required error={errors.model}>
+            <FormField label="Model Number" error={errors.model} required>
               <Input
                 placeholder="e.g. XPR205 DualRange"
                 value={formData.model}
                 onChange={(e) => setFormData({ ...formData, model: e.target.value })}
-                error={!!errors.model}
               />
             </FormField>
 
-            <FormField label="Serial Number" required error={errors.serialNumber}>
+            <FormField label="Serial Number" error={errors.serialNumber} required>
               <Input
                 placeholder="e.g. MT-88492019"
                 value={formData.serialNumber}
-                onChange={(e) =>
-                  setFormData({ ...formData, serialNumber: e.target.value })
-                }
-                error={!!errors.serialNumber}
-                className="font-mono"
+                onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
               />
             </FormField>
-          </div>
-        </div>
-
-        {/* Section 2: Location & Deployment */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200/90 shadow-2xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-semibold text-slate-900">2. Laboratory Location</h3>
-            <p className="text-xs text-slate-500">
-              Department custody and laboratory physical location
-            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Department" required>
-              <Select
-                value={formData.department}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    department: e.target.value as Equipment['department'],
-                  })
-                }
-              >
-                <option value="Analytical Chemistry">Analytical Chemistry</option>
-                <option value="Microbiology">Microbiology</option>
-                <option value="Quality Control">Quality Control</option>
-                <option value="R&D Formulation">R&D Formulation</option>
-                <option value="Bioassay">Bioassay</option>
-              </Select>
-            </FormField>
-
-            <FormField
-              label="Laboratory Location"
-              required
-              error={errors.location}
-              helperText="Room number, bench designation, or cleanroom bay"
-            >
+            <FormField label="Physical Laboratory Location" error={errors.location} required>
               <Input
                 placeholder="e.g. Lab 1A - Clean Bench 02"
                 value={formData.location}
-                onChange={(e) =>
-                  setFormData({ ...formData, location: e.target.value })
-                }
-                error={!!errors.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Commission / Purchase Date">
+              <Input
+                type="date"
+                value={formData.purchaseDate}
+                onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
               />
             </FormField>
           </div>
         </div>
 
-        {/* Section 3: Calibration Parameters */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200/90 shadow-2xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-semibold text-slate-900">
-              3. Calibration Parameters
-            </h3>
-            <p className="text-xs text-slate-500">
-              Standard calibration interval and previous verification date
-            </p>
+        {/* Section 3: Calibration Interval & Compliance */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
+          <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-800">
+              3. Calibration Schedule & Metrology Specs
+            </h2>
+            <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              <ShieldCheck className="w-3.5 h-3.5" /> ISO 17025 Compliant
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FormField
-              label="Calibration Interval"
-              required
-              helperText="Mandatory recertification frequency"
-            >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField label="Calibration Interval" required>
               <Select
                 value={formData.calibrationIntervalMonths}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    calibrationIntervalMonths: Number(e.target.value),
-                  })
-                }
+                onChange={(e) => setFormData({ ...formData, calibrationIntervalMonths: Number(e.target.value) })}
               >
-                <option value={3}>3 Months (High Criticality)</option>
-                <option value={6}>6 Months (Semi-Annual)</option>
-                <option value={12}>12 Months (Annual)</option>
-                <option value={24}>24 Months (Biennial)</option>
+                <option value={1}>1 Month (High Frequency)</option>
+                <option value={3}>3 Months (Quarterly Verification)</option>
+                <option value={6}>6 Months (Semi-Annual Routine)</option>
+                <option value={12}>12 Months (Annual Recertification)</option>
               </Select>
             </FormField>
 
@@ -312,93 +273,55 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
               <Input
                 type="date"
                 value={formData.lastCalibrationDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, lastCalibrationDate: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, lastCalibrationDate: e.target.value })}
               />
             </FormField>
 
-            <FormField
-              label="Measurement Tolerance"
-              helperText="Acceptable deviation threshold"
-            >
+            <FormField label="Acceptable Error / Tolerance">
               <Input
-                placeholder="e.g. ±0.0001 g or ±0.02 pH"
+                placeholder="e.g. ±0.0001 g"
                 value={formData.tolerance}
-                onChange={(e) =>
-                  setFormData({ ...formData, tolerance: e.target.value })
-                }
-              />
-            </FormField>
-          </div>
-        </div>
-
-        {/* Section 4: Additional Information */}
-        <div className="bg-white p-6 rounded-xl border border-slate-200/90 shadow-2xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-semibold text-slate-900">
-              4. Additional Information
-            </h3>
-            <p className="text-xs text-slate-500">
-              Procurement metadata and application description
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FormField label="Purchase Date">
-              <Input
-                type="date"
-                value={formData.purchaseDate}
-                onChange={(e) =>
-                  setFormData({ ...formData, purchaseDate: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, tolerance: e.target.value })}
               />
             </FormField>
 
-            <FormField label="Assigned Metrologist / Custodian">
+            <FormField label="Lead Metrologist / Assignee">
               <Input
-                placeholder="e.g. Dr. Sarah Lin"
                 value={formData.assignedTechnician}
-                onChange={(e) =>
-                  setFormData({ ...formData, assignedTechnician: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, assignedTechnician: e.target.value })}
               />
             </FormField>
-
-            <div className="sm:col-span-2">
-              <FormField
-                label="Description & Operational Purpose"
-                helperText="Specify primary assay methods or regulatory scope"
-              >
-                <Textarea
-                  rows={3}
-                  placeholder="Describe instrument intended usage, regulatory testing scope (e.g. USP <41>, ICH guidelines), and specific handling precautions..."
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                />
-              </FormField>
-            </div>
           </div>
+
+          <FormField label="Instrument Notes, SOP Reference & Traceability">
+            <Textarea
+              rows={3}
+              placeholder="Enter standard operating procedure notes, reference standard batch numbers, or handling requirements..."
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
+          </FormField>
         </div>
 
-        {/* Form Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-3">
+        {/* Submit Actions */}
+        <div className="flex items-center justify-end gap-3 pt-2">
           <Button
-            type="button"
             variant="outline"
+            size="md"
+            type="button"
             onClick={() => onNavigate('/equipment')}
+            disabled={isSubmitting}
           >
             Cancel
           </Button>
           <Button
-            type="submit"
             variant="primary"
-            isLoading={isSubmitting}
-            icon={<Save className="w-4 h-4" />}
+            size="md"
+            type="submit"
+            disabled={isSubmitting}
+            icon={isSubmitting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
           >
-            Save Equipment
+            {isSubmitting ? 'Registering with Database...' : 'Register Equipment'}
           </Button>
         </div>
       </form>
