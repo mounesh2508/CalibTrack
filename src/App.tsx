@@ -286,9 +286,19 @@ export default function App() {
     await api.markNotificationRead(id);
   };
 
-  // If path is /login, show the Login Page directly without the app shell
-  if (currentPath === '/login') {
-    return <LoginPage onLogin={() => navigate('/dashboard')} />;
+  // Authentication Guard: Redirect unauthenticated users to Login
+  if (!currentUser || currentPath === '/login') {
+    return (
+      <LoginPage
+        onLogin={(user) => {
+          setCurrentUser(user);
+          setSessionNotice(null);
+          navigate('/dashboard');
+          loadBackendData();
+        }}
+        sessionNotice={sessionNotice}
+      />
+    );
   }
 
   // Parse path to match route
@@ -312,6 +322,7 @@ export default function App() {
         onRefreshList={loadBackendData}
         onDeleteEquipment={handleDeleteEquipment}
         onUpdateEquipment={handleUpdateEquipment}
+        currentUser={currentUser}
       />
     );
   } else if (currentPath === '/equipment/new') {
@@ -332,6 +343,7 @@ export default function App() {
         onOpenCalibrateModal={handleOpenCalibrateModal}
         onDeleteEquipment={handleDeleteEquipment}
         onRefreshList={loadBackendData}
+        currentUser={currentUser}
       />
     );
   } else if (currentPath === '/calibration') {
@@ -386,7 +398,7 @@ export default function App() {
       />
     );
   } else if (currentPath === '/settings') {
-    pageContent = <SettingsPage />;
+    pageContent = <SettingsPage currentUser={currentUser} />;
   } else {
     // Fallback to Dashboard
     pageContent = (
@@ -405,6 +417,8 @@ export default function App() {
       onNavigate={navigate}
       notifications={notifications}
       equipmentList={equipmentList}
+      currentUser={currentUser}
+      onLogout={handleLogout}
     >
       {pageContent}
 

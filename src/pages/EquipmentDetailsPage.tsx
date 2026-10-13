@@ -204,6 +204,7 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
           </div>
         </div>
 
+        <div className="flex items-center gap-2 sm:gap-3">
           {currentUser?.role === 'ADMIN' && (
             <Button
               variant="outline"

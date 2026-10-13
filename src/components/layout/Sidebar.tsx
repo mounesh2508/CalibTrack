@@ -43,6 +43,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen,
   onMobileClose,
   unreadCount,
+  currentUser,
+  onLogout,
 }) => {
   const workspaceItems: NavItem[] = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },

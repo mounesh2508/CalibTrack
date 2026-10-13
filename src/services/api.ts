@@ -275,6 +275,7 @@ export const api = {
   getStoredUser,
   setStoredUser,
   clearAuthSession,
+  setUnauthorizedListener,
 
   // Health
   async fetchHealth(): Promise<{ status: string }> {
