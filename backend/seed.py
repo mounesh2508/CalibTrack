@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime, timedelta
 from backend.app.database import SessionLocal, engine, Base
 from backend.app.models import User, Equipment, CalibrationRecord, Notification, ReminderSettings
+from backend.app.core.security import hash_password
 from backend.app.services.status_calculator import calculate_equipment_status
 
 def seed_database():
@@ -20,17 +21,24 @@ def seed_database():
             id="usr-admin-01",
             name="Dr. Sarah Lin",
             email="sarah.lin@calibtrack.lab",
-            password_hash="$2b$12$e8YkZ8h3/9mockedhashforadminuser",
+            password_hash=hash_password("AdminPass123!"),
+            role="ADMIN",
+        )
+        admin_portal = User(
+            id="usr-admin-02",
+            name="System Administrator",
+            email="admin@calibtrack-lab.com",
+            password_hash=hash_password("AdminPass123!"),
             role="ADMIN",
         )
         tech_user = User(
             id="usr-tech-02",
             name="Marcus Vance",
             email="marcus.vance@calibtrack.lab",
-            password_hash="$2b$12$e8YkZ8h3/9mockedhashfortechuser",
+            password_hash=hash_password("TechPass123!"),
             role="TECHNICIAN",
         )
-        db.add_all([admin_user, tech_user])
+        db.add_all([admin_user, admin_portal, tech_user])
         db.flush()
 
         today = date.today()
