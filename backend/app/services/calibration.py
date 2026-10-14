@@ -13,11 +13,17 @@ def get_calibration_records(
     equipment_id: Optional[str] = None,
     limit: int = 100
 ) -> List[CalibrationRecord]:
-    # Strictly join with Equipment so orphaned records from deleted equipment or unassigned assets never appear
-    query = db.query(CalibrationRecord).join(Equipment, CalibrationRecord.equipment_id == Equipment.id)
+    # Join with Equipment to retrieve real instrument code and name
+    query = db.query(CalibrationRecord, Equipment).join(Equipment, CalibrationRecord.equipment_id == Equipment.id)
     if equipment_id:
         query = query.filter(CalibrationRecord.equipment_id == equipment_id)
-    return query.order_by(CalibrationRecord.calibration_date.desc()).limit(limit).all()
+    results = query.order_by(CalibrationRecord.calibration_date.desc()).limit(limit).all()
+    records = []
+    for cal, eq in results:
+        setattr(cal, "equipment_code", eq.equipment_code)
+        setattr(cal, "equipment_name", eq.name)
+        records.append(cal)
+    return records
 
 def create_calibration_record(
     db: Session,
@@ -74,6 +80,8 @@ def create_calibration_record(
 
     db.commit()
     db.refresh(db_record)
+    setattr(db_record, "equipment_code", equipment.equipment_code)
+    setattr(db_record, "equipment_name", equipment.name)
     return db_record
 
 def delete_calibration_record(db: Session, record_id: str) -> bool:

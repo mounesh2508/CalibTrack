@@ -38,6 +38,11 @@ export type DbCalibrationResult = 'PASSED' | 'FAILED' | 'CONDITIONAL';
 export interface CalibrationRecordEntity {
   id: string;
   equipment_id: string;
+  equipment_code?: string;
+  equipment_name?: string;
+  category?: string;
+  department?: string;
+  location?: string;
   calibration_date: string;
   next_due_date: string;
   performed_by: string | null;

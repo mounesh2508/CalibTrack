@@ -81,12 +81,30 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
         setEquipment(apiEquip);
       }
 
+      const resolvedEquip = apiEquip || foundLocal;
       if (apiHistory && apiHistory.length > 0) {
-        setHistory(apiHistory);
+        const enriched = apiHistory.map((r) => ({
+          ...r,
+          equipmentName: (r.equipmentName && r.equipmentName !== 'Laboratory Instrument')
+            ? r.equipmentName
+            : resolvedEquip?.name || r.equipmentName,
+          equipmentCode: (r.equipmentCode && r.equipmentCode !== 'EQ-LOGGED' && r.equipmentCode !== 'EQ-LOG')
+            ? r.equipmentCode
+            : resolvedEquip?.code || r.equipmentCode,
+        }));
+        setHistory(enriched);
       } else {
-        const localHistory = initialRecords.filter(
-          (r) => r.equipmentId === equipmentId || (foundLocal && r.equipmentCode === foundLocal.code)
-        );
+        const localHistory = initialRecords
+          .filter((r) => r.equipmentId === equipmentId || (resolvedEquip && r.equipmentCode === resolvedEquip.code))
+          .map((r) => ({
+            ...r,
+            equipmentName: (r.equipmentName && r.equipmentName !== 'Laboratory Instrument')
+              ? r.equipmentName
+              : resolvedEquip?.name || r.equipmentName,
+            equipmentCode: (r.equipmentCode && r.equipmentCode !== 'EQ-LOGGED' && r.equipmentCode !== 'EQ-LOG')
+              ? r.equipmentCode
+              : resolvedEquip?.code || r.equipmentCode,
+          }));
         setHistory(localHistory);
       }
     } catch (err: any) {
@@ -101,7 +119,7 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
 
   useEffect(() => {
     loadEquipmentData();
-  }, [equipmentId]);
+  }, [equipmentId, initialRecords.length]);
 
   const handleDelete = async () => {
     if (!equipment) return;

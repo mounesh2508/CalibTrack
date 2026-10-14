@@ -17,6 +17,7 @@ import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Modal } from '../components/common/Modal';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
+import { CalibrationSuccessModal } from '../components/common/CalibrationSuccessModal';
 import { Equipment, CalibrationRecord } from '../types';
 import { api } from '../services/api';
 
@@ -43,6 +44,10 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Success Pop-up Modal State
+  const [successRecord, setSuccessRecord] = useState<CalibrationRecord | null>(null);
+  const [successEquipment, setSuccessEquipment] = useState<Equipment | null>(null);
 
   // New Record Form State
   const [newRecordForm, setNewRecordForm] = useState({
@@ -130,9 +135,33 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
         remarks: newRecordForm.remarks,
       });
 
+      const fullRecord: CalibrationRecord = {
+        ...result.record,
+        equipmentId: targetEq.id,
+        equipmentCode: targetEq.code,
+        equipmentName: targetEq.name,
+      };
+
       // Pass mapped record to frontend state
-      onAddCalibrationRecord(result.record);
+      onAddCalibrationRecord(fullRecord);
       setIsAddModalOpen(false);
+      setSuccessRecord(fullRecord);
+      setSuccessEquipment(targetEq);
+
+      // Reset form fields
+      setNewRecordForm({
+        equipmentId: equipmentList[0]?.id || '',
+        calibrationDate: new Date().toISOString().split('T')[0],
+        nextDueDate: '',
+        serviceProvider: 'Metrology Global Solutions ISO 17025',
+        technicianName: 'Alan Croft, Senior Metrologist',
+        certificateNumber: `CERT-CAL-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+        result: 'Passed',
+        standardUsed: 'NIST Traceable Reference Standard',
+        environmentalTemp: '21.0 °C',
+        environmentalHumidity: '45 % RH',
+        remarks: 'Routine calibration verified. Linearity, repeatability, and hysteresis within specifications.',
+      });
 
       if (onRefreshRecords) {
         await onRefreshRecords();
@@ -347,7 +376,19 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
               ) : (
                 <Select
                   value={newRecordForm.equipmentId}
-                  onChange={(e) => setNewRecordForm({ ...newRecordForm, equipmentId: e.target.value })}
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    const eq = equipmentList.find((x) => x.id === selectedId);
+                    const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                    setNewRecordForm((prev) => ({
+                      ...prev,
+                      equipmentId: selectedId,
+                      certificateNumber: eq ? `CERT-${eq.code}-${dateStamp}` : prev.certificateNumber,
+                      serviceProvider: eq?.manufacturer ? `${eq.manufacturer} Accredited Calibration Services` : prev.serviceProvider,
+                      standardUsed: eq?.calibrationStandard || prev.standardUsed,
+                      remarks: eq ? `Routine calibration verified for ${eq.name} (${eq.code}) within specifications.` : prev.remarks,
+                    }));
+                  }}
                   required
                 >
                   <option value="">Select an instrument...</option>
@@ -512,6 +553,25 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
             </div>
           </div>
         </Modal>
+      )}
+
+      {/* Success Pop-up Modal */}
+      {successRecord && (
+        <CalibrationSuccessModal
+          isOpen={true}
+          onClose={() => {
+            setSuccessRecord(null);
+            setSuccessEquipment(null);
+          }}
+          onProceed={() => {
+            setSuccessRecord(null);
+            setSuccessEquipment(null);
+          }}
+          record={successRecord}
+          equipment={successEquipment}
+          title="Calibration Log Successful"
+          proceedButtonText="Proceed to Records"
+        />
       )}
     </div>
   );

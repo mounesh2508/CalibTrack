@@ -650,6 +650,19 @@ class MemoryStore {
       },
     ];
 
+    // Enrich pre-seeded calibration records with corresponding equipment info
+    this.calibrationRecords = this.calibrationRecords.map((r) => {
+      const eq = this.equipment.find((e) => e.id === r.equipment_id);
+      return {
+        ...r,
+        equipment_code: eq?.equipment_code || 'EQ-LOGGED',
+        equipment_name: eq?.name || 'Laboratory Instrument',
+        category: eq?.category || 'General',
+        department: eq?.department || 'Laboratory',
+        location: eq?.location || '',
+      };
+    });
+
     // Notifications
     this.notifications = [
       {

@@ -152,7 +152,8 @@ export function mapBackendEquipmentToFrontend(item: any): Equipment {
 
 export function mapBackendCalibrationToFrontend(
   item: any,
-  fallbackEquipmentName = 'Laboratory Instrument'
+  fallbackEquipmentName?: string,
+  fallbackEquipmentCode?: string
 ): CalibrationRecord {
   const outcomeRaw = (item.result || item.status || 'PASSED').toUpperCase();
   let result: CalibrationRecord['result'] = 'Passed';
@@ -164,11 +165,14 @@ export function mapBackendCalibrationToFrontend(
     result = 'Passed';
   }
 
+  const equipCode = item.equipment_code || item.equipmentCode || item.code || fallbackEquipmentCode || '';
+  const equipName = item.equipment_name || item.equipmentName || item.name || fallbackEquipmentName || (equipCode ? `Instrument ${equipCode}` : 'Laboratory Instrument');
+
   return {
     id: String(item.id || `REC-${Date.now()}`),
     equipmentId: String(item.equipment_id || item.equipmentId || ''),
-    equipmentCode: item.equipment_code || item.equipmentCode || 'EQ-LOGGED',
-    equipmentName: item.equipment_name || item.equipmentName || fallbackEquipmentName,
+    equipmentCode: equipCode,
+    equipmentName: equipName,
     calibrationDate: item.calibration_date || item.calibrationDate || new Date().toISOString().split('T')[0],
     nextDueDate: item.next_due_date || item.nextDueDate || '2026-12-31',
     serviceProvider: item.calibration_provider || item.serviceProvider || 'Precision Lab Metrology Inc.',
@@ -479,7 +483,7 @@ export const api = {
     const equipData = raw.updatedEquipment ? mapBackendEquipmentToFrontend(raw.updatedEquipment) : undefined;
 
     return {
-      record: mapBackendCalibrationToFrontend(recordData),
+      record: mapBackendCalibrationToFrontend(recordData, equipData?.name, equipData?.code),
       updatedEquipment: equipData,
     };
   },

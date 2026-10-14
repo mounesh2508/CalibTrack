@@ -12,6 +12,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { Modal } from './components/common/Modal';
+import { CalibrationSuccessModal } from './components/common/CalibrationSuccessModal';
 import { FormField, Input, Select, Textarea } from './components/common/FormField';
 import { Button } from './components/common/Button';
 import {
@@ -40,6 +41,10 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
+
+  // Success Confirmation Pop-up Modal State
+  const [successCalibrateRecord, setSuccessCalibrateRecord] = useState<CalibrationRecord | null>(null);
+  const [successEquipment, setSuccessEquipment] = useState<Equipment | null>(null);
 
   // Sync with backend API
   const loadBackendData = async () => {
@@ -72,9 +77,21 @@ export default function App() {
       } else {
         // Filter calibrations and notifications to valid registered equipment
         if (Array.isArray(calibData)) {
-          const validCalibs = calibData.filter(
-            (r) => equipIds.has(r.equipmentId) || equipIds.has(r.equipmentCode)
-          );
+          const equipMap = new Map(items.map((e) => [e.id, e]));
+          const validCalibs = calibData
+            .filter((r) => equipIds.has(r.equipmentId) || items.some((e) => e.code === r.equipmentCode))
+            .map((r) => {
+              const matchedEq = equipMap.get(r.equipmentId) || items.find((e) => e.code === r.equipmentCode);
+              return {
+                ...r,
+                equipmentCode: (r.equipmentCode && r.equipmentCode !== 'EQ-LOGGED' && r.equipmentCode !== 'EQ-LOG')
+                  ? r.equipmentCode
+                  : matchedEq?.code || r.equipmentCode,
+                equipmentName: (r.equipmentName && r.equipmentName !== 'Laboratory Instrument')
+                  ? r.equipmentName
+                  : matchedEq?.name || r.equipmentName,
+              };
+            });
           setCalibrationRecords(validCalibs);
           const activities: RecentActivity[] = validCalibs.slice(0, 8).map((r: any) => ({
             id: `ACT-${r.id}`,
@@ -229,12 +246,12 @@ export default function App() {
       })
     );
 
-    // Add recent activity
+    // Add recent activity with real equipment name and code
     const activity: RecentActivity = {
       id: `ACT-${Date.now()}`,
       type: 'calibration_completed',
       title: 'Calibration completed',
-      description: `${record.equipmentName} successfully calibrated by ${record.serviceProvider}.`,
+      description: `${record.equipmentName} (${record.equipmentCode}) successfully calibrated by ${record.serviceProvider}.`,
       timestamp: 'Just now',
       actor: record.technicianName,
       equipmentCode: record.equipmentCode,
@@ -246,12 +263,19 @@ export default function App() {
 
   const handleOpenCalibrateModal = (eq: Equipment) => {
     setCalibrateTarget(eq);
+    const defaultProvider = eq.manufacturer
+      ? `${eq.manufacturer} Accredited Calibration Services`
+      : 'Metrology Global Solutions ISO 17025';
+
+    const dateStamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const certNumber = `CERT-${eq.code}-${dateStamp}`;
+
     setCalibrateForm({
       date: new Date().toISOString().split('T')[0],
-      provider: 'Metrology Global Solutions ISO 17025',
-      certNumber: `CERT-${eq.code}-${Math.floor(100 + Math.random() * 900)}`,
+      provider: defaultProvider,
+      certNumber,
       result: 'Passed',
-      remarks: `Instrument ${eq.name} recalibrated and tested within specifications.`,
+      remarks: `Instrument ${eq.name} (${eq.code}) calibrated and verified within manufacturer tolerance specifications.`,
     });
   };
 
@@ -259,8 +283,9 @@ export default function App() {
     e.preventDefault();
     if (!calibrateTarget) return;
 
+    const currentTarget = calibrateTarget;
     const nextDate = new Date();
-    nextDate.setMonth(nextDate.getMonth() + calibrateTarget.calibrationIntervalMonths);
+    nextDate.setMonth(nextDate.getMonth() + currentTarget.calibrationIntervalMonths);
     const nextDueDateStr = nextDate.toISOString().split('T')[0];
 
     const dbResult =
@@ -270,42 +295,63 @@ export default function App() {
         ? 'CONDITIONAL'
         : 'PASSED';
 
+    let savedRecord: CalibrationRecord | null = null;
+
     try {
       const result = await api.createCalibrationRecord({
-        equipment_id: calibrateTarget.id,
+        equipment_id: currentTarget.id,
         calibration_date: calibrateForm.date,
         next_due_date: nextDueDateStr,
-        performed_by: 'Alan Croft, Senior Metrologist',
+        performed_by: currentUser?.name || 'Alan Croft, Senior Metrologist',
         calibration_provider: calibrateForm.provider,
-        certificate_number: calibrateForm.certNumber || `CERT-${calibrateTarget.code}-99`,
+        certificate_number: calibrateForm.certNumber || `CERT-${currentTarget.code}-${Date.now().toString().slice(-4)}`,
         result: dbResult,
         remarks: calibrateForm.remarks,
       });
 
-      handleAddCalibrationRecord(result.record);
+      // Explicitly lock down the target equipment's true name and code
+      savedRecord = {
+        ...result.record,
+        equipmentId: currentTarget.id,
+        equipmentCode: currentTarget.code,
+        equipmentName: currentTarget.name,
+      };
+      handleAddCalibrationRecord(savedRecord);
     } catch {
       // Fallback
-      const newRecord: CalibrationRecord = {
+      savedRecord = {
         id: `REC-${Date.now()}`,
-        equipmentId: calibrateTarget.id,
-        equipmentCode: calibrateTarget.code,
-        equipmentName: calibrateTarget.name,
+        equipmentId: currentTarget.id,
+        equipmentCode: currentTarget.code,
+        equipmentName: currentTarget.name,
         calibrationDate: calibrateForm.date,
         nextDueDate: nextDueDateStr,
         serviceProvider: calibrateForm.provider,
-        technicianName: 'Alan Croft, Senior Metrologist',
-        certificateNumber: calibrateForm.certNumber || `CERT-${calibrateTarget.code}-99`,
+        technicianName: currentUser?.name || 'Alan Croft, Senior Metrologist',
+        certificateNumber: calibrateForm.certNumber || `CERT-${currentTarget.code}-${Date.now().toString().slice(-4)}`,
         result: calibrateForm.result,
-        standardUsed: calibrateTarget.calibrationStandard || 'NIST Traceable Reference',
+        standardUsed: currentTarget.calibrationStandard || 'NIST Traceable Reference',
         environmentalTemp: '21.0 °C',
         environmentalHumidity: '45 % RH',
         remarks: calibrateForm.remarks,
         status: 'Completed',
       };
-      handleAddCalibrationRecord(newRecord);
+      handleAddCalibrationRecord(savedRecord);
     }
 
     setCalibrateTarget(null);
+
+    // Show calibration success pop-up modal with instrument details
+    if (savedRecord) {
+      setSuccessCalibrateRecord(savedRecord);
+      setSuccessEquipment(currentTarget);
+    }
+  };
+
+  const handleProceedToCalibrationFromSuccess = () => {
+    setSuccessCalibrateRecord(null);
+    setSuccessEquipment(null);
+    navigate('/calibration');
   };
 
   const handleMarkAllAsRead = async () => {
@@ -470,18 +516,41 @@ export default function App() {
           title={`Quick Calibrate: ${calibrateTarget.name} (${calibrateTarget.code})`}
         >
           <form onSubmit={handleQuickCalibrateSubmit} className="space-y-4">
-            <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg text-xs space-y-1 text-slate-700">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Department:</span>
-                <span className="font-semibold">{calibrateTarget.department}</span>
+            <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs space-y-2 text-slate-700">
+              <div className="flex justify-between items-start pb-1.5 border-b border-blue-200/60">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-wider text-blue-600 block">Target Asset</span>
+                  <span className="font-bold text-slate-900 text-sm">{calibrateTarget.name}</span>
+                </div>
+                <span className="font-mono text-xs font-semibold px-2 py-0.5 bg-white border border-blue-300 rounded text-blue-700 shadow-2xs">
+                  {calibrateTarget.code}
+                </span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Location:</span>
-                <span className="font-medium">{calibrateTarget.location}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Cycle:</span>
-                <span className="font-medium">Every {calibrateTarget.calibrationIntervalMonths} Months</span>
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div>
+                  <span className="text-slate-400">Manufacturer:</span>{' '}
+                  <span className="font-medium text-slate-800">{calibrateTarget.manufacturer}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Model:</span>{' '}
+                  <span className="font-medium text-slate-800">{calibrateTarget.model}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Department:</span>{' '}
+                  <span className="font-medium text-slate-800">{calibrateTarget.department}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Location:</span>{' '}
+                  <span className="font-medium text-slate-800">{calibrateTarget.location}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Cycle:</span>{' '}
+                  <span className="font-medium text-slate-800">Every {calibrateTarget.calibrationIntervalMonths} Months</span>
+                </div>
+                <div>
+                  <span className="text-slate-400">Serial #:</span>{' '}
+                  <span className="font-mono text-slate-800">{calibrateTarget.serialNumber || 'N/A'}</span>
+                </div>
               </div>
             </div>
 
@@ -546,6 +615,22 @@ export default function App() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* Calibration Success Pop-up Modal */}
+      {successCalibrateRecord && (
+        <CalibrationSuccessModal
+          isOpen={true}
+          onClose={() => {
+            setSuccessCalibrateRecord(null);
+            setSuccessEquipment(null);
+          }}
+          onProceed={handleProceedToCalibrationFromSuccess}
+          record={successCalibrateRecord}
+          equipment={successEquipment}
+          title="Calibration Log Successful"
+          proceedButtonText="Proceed to Calibration Page"
+        />
       )}
     </AppLayout>
   );

@@ -14,24 +14,45 @@ export class CalibrationService {
         const expected = filters.result.toUpperCase();
         records = records.filter((r) => r.result === expected);
       }
-      return records.sort((a, b) => new Date(b.calibration_date).getTime() - new Date(a.calibration_date).getTime());
+      const enriched = records.map((r) => {
+        const eq = memoryStore.equipment.find((e) => e.id === r.equipment_id);
+        return {
+          ...r,
+          equipment_code: r.equipment_code || eq?.equipment_code || 'EQ-UNKNOWN',
+          equipment_name: r.equipment_name || eq?.name || 'Laboratory Instrument',
+          category: r.category || eq?.category || 'General',
+          department: r.department || eq?.department || 'Laboratory',
+          location: r.location || eq?.location || '',
+        };
+      });
+      return enriched.sort((a, b) => new Date(b.calibration_date).getTime() - new Date(a.calibration_date).getTime());
     }
 
     const pool = getPool()!;
-    let sql = 'SELECT * FROM calibration_records WHERE 1=1';
+    let sql = `
+      SELECT c.*, 
+             e.equipment_code, 
+             e.name AS equipment_name, 
+             e.category, 
+             e.department, 
+             e.location 
+      FROM calibration_records c 
+      LEFT JOIN equipment e ON c.equipment_id = e.id 
+      WHERE 1=1
+    `;
     const params: any[] = [];
 
     if (filters.equipmentId) {
-      sql += ' AND equipment_id = ?';
+      sql += ' AND c.equipment_id = ?';
       params.push(filters.equipmentId);
     }
 
     if (filters.result && filters.result !== 'All') {
-      sql += ' AND result = ?';
+      sql += ' AND c.result = ?';
       params.push(filters.result.toUpperCase());
     }
 
-    sql += ' ORDER BY calibration_date DESC';
+    sql += ' ORDER BY c.calibration_date DESC';
 
     const [rows] = await pool.query(sql, params);
     return rows as CalibrationRecordEntity[];
@@ -44,11 +65,31 @@ export class CalibrationService {
   async getById(id: string): Promise<CalibrationRecordEntity | null> {
     if (isFallback() || !getPool()) {
       const rec = memoryStore.calibrationRecords.find((r) => r.id === id);
-      return rec || null;
+      if (!rec) return null;
+      const eq = memoryStore.equipment.find((e) => e.id === rec.equipment_id);
+      return {
+        ...rec,
+        equipment_code: rec.equipment_code || eq?.equipment_code || 'EQ-UNKNOWN',
+        equipment_name: rec.equipment_name || eq?.name || 'Laboratory Instrument',
+        category: rec.category || eq?.category || 'General',
+        department: rec.department || eq?.department || 'Laboratory',
+        location: rec.location || eq?.location || '',
+      };
     }
 
     const pool = getPool()!;
-    const [rows]: any = await pool.query('SELECT * FROM calibration_records WHERE id = ? LIMIT 1', [id]);
+    const [rows]: any = await pool.query(
+      `SELECT c.*, 
+              e.equipment_code, 
+              e.name AS equipment_name, 
+              e.category, 
+              e.department, 
+              e.location 
+       FROM calibration_records c 
+       LEFT JOIN equipment e ON c.equipment_id = e.id 
+       WHERE c.id = ? LIMIT 1`,
+      [id]
+    );
     return rows.length > 0 ? (rows[0] as CalibrationRecordEntity) : null;
   }
 
@@ -94,6 +135,11 @@ export class CalibrationService {
     const record: CalibrationRecordEntity = {
       id: recordId,
       equipment_id: equipment.id,
+      equipment_code: equipment.equipment_code,
+      equipment_name: equipment.name,
+      category: equipment.category,
+      department: equipment.department || undefined,
+      location: equipment.location || undefined,
       calibration_date: data.calibration_date,
       next_due_date: calculatedNextDue,
       performed_by: data.performed_by || 'Metrology Technician',

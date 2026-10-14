@@ -16,6 +16,8 @@ class CalibrationRecordCreate(BaseModel):
 class CalibrationRecordResponse(BaseModel):
     id: str
     equipment_id: str
+    equipment_code: Optional[str] = None
+    equipment_name: Optional[str] = None
     calibration_date: date
     next_due_date: date
     performed_by: Optional[str] = None
