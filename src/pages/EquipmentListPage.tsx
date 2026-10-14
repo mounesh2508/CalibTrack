@@ -379,10 +379,14 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
       {filteredList.length === 0 ? (
         <EmptyState
           icon={<SlidersHorizontal className="w-6 h-6 text-slate-400" />}
-          title="No Equipment Found"
-          description="No instruments match your active search and filter criteria. Try adjusting your parameters or clear all filters."
-          actionLabel="Clear Filters"
-          onAction={handleResetFilters}
+          title={equipmentList.length === 0 ? "No Instruments Registered" : "No Equipment Found"}
+          description={
+            equipmentList.length === 0
+              ? "Your laboratory equipment registry is currently empty. Register your first instrument to begin tracking calibration schedules."
+              : "No instruments match your active search and filter criteria. Try adjusting your parameters or clear all filters."
+          }
+          actionLabel={equipmentList.length === 0 ? "+ Register Equipment" : "Clear Filters"}
+          onAction={equipmentList.length === 0 ? () => onNavigate('/equipment/new') : handleResetFilters}
         />
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">

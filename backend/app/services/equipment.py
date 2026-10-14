@@ -130,6 +130,11 @@ def delete_equipment(db: Session, equipment_id: str) -> bool:
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Equipment '{equipment_id}' not found."
         )
+    # Explicitly cascade delete related calibration records and notifications in SQLite
+    from backend.app.models.calibration import CalibrationRecord
+    from backend.app.models.notification import Notification
+    db.query(CalibrationRecord).filter(CalibrationRecord.equipment_id == db_item.id).delete()
+    db.query(Notification).filter(Notification.equipment_id == db_item.id).delete()
     db.delete(db_item)
     db.commit()
     return True

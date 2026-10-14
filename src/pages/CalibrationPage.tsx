@@ -177,6 +177,10 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
             variant="primary"
             size="sm"
             onClick={() => {
+              if (equipmentList.length === 0) {
+                onNavigate('/equipment/new');
+                return;
+              }
               setSubmitError(null);
               setIsAddModalOpen(true);
             }}
@@ -236,7 +240,24 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
               {filteredRecords.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
-                    No calibration records found matching current criteria.
+                    <p className="font-semibold text-slate-700 text-xs">No calibration records logged</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {equipmentList.length === 0
+                        ? 'Register laboratory equipment first to schedule or log calibration certificates.'
+                        : 'No calibration records found matching current criteria.'}
+                    </p>
+                    {equipmentList.length === 0 && (
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() => onNavigate('/equipment/new')}
+                          icon={<Plus className="w-3.5 h-3.5" />}
+                        >
+                          + Register First Instrument
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (

@@ -13,7 +13,8 @@ def get_calibration_records(
     equipment_id: Optional[str] = None,
     limit: int = 100
 ) -> List[CalibrationRecord]:
-    query = db.query(CalibrationRecord)
+    # Strictly join with Equipment so orphaned records from deleted equipment or unassigned assets never appear
+    query = db.query(CalibrationRecord).join(Equipment, CalibrationRecord.equipment_id == Equipment.id)
     if equipment_id:
         query = query.filter(CalibrationRecord.equipment_id == equipment_id)
     return query.order_by(CalibrationRecord.calibration_date.desc()).limit(limit).all()

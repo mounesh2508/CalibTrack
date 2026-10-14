@@ -14,6 +14,16 @@ def get_dashboard_summary(
     db: Session = Depends(get_db),
 ):
     total = db.query(Equipment).count()
+    if total == 0:
+        return DashboardSummaryResponse(
+            total_equipment=0,
+            calibrated_count=0,
+            due_soon_count=0,
+            overdue_count=0,
+            upcoming_calibrations=[],
+            recent_calibration_activity=[],
+        )
+
     calibrated = db.query(Equipment).filter(Equipment.status == "CALIBRATED").count()
     due_soon = db.query(Equipment).filter(Equipment.status == "DUE_SOON").count()
     overdue = db.query(Equipment).filter(Equipment.status == "OVERDUE").count()
@@ -44,9 +54,10 @@ def get_dashboard_summary(
             )
         )
 
-    # Recent calibration records
+    # Recent calibration records (strictly matching existing equipment)
     recent_calibrations = (
         db.query(CalibrationRecord)
+        .join(Equipment, CalibrationRecord.equipment_id == Equipment.id)
         .order_by(CalibrationRecord.calibration_date.desc())
         .limit(6)
         .all()

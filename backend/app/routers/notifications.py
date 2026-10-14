@@ -11,8 +11,55 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 def list_notifications(
     db: Session = Depends(get_db),
 ):
-    items = db.query(Notification).order_by(Notification.created_at.desc()).limit(100).all()
-    unread_count = db.query(Notification).filter(Notification.is_read == False).count()
+    from backend.app.models.equipment import Equipment
+    from sqlalchemy import or_
+
+    total_eq = db.query(Equipment).count()
+    if total_eq == 0:
+        # If there are 0 equipment, only show system-wide notifications that have no equipment_id
+        items = (
+            db.query(Notification)
+            .filter(Notification.equipment_id == None)
+            .order_by(Notification.created_at.desc())
+            .limit(100)
+            .all()
+        )
+        unread_count = (
+            db.query(Notification)
+            .filter(Notification.equipment_id == None, Notification.is_read == False)
+            .count()
+        )
+        return {
+            "total": len(items),
+            "unread_count": unread_count,
+            "items": items,
+        }
+
+    # Query notifications: either system notifications without equipment_id, or notifications where equipment exists
+    existing_eq_ids = db.query(Equipment.id).subquery()
+    items = (
+        db.query(Notification)
+        .filter(
+            or_(
+                Notification.equipment_id == None,
+                Notification.equipment_id.in_(existing_eq_ids),
+            )
+        )
+        .order_by(Notification.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    unread_count = (
+        db.query(Notification)
+        .filter(
+            Notification.is_read == False,
+            or_(
+                Notification.equipment_id == None,
+                Notification.equipment_id.in_(existing_eq_ids),
+            ),
+        )
+        .count()
+    )
     return {
         "total": len(items),
         "unread_count": unread_count,

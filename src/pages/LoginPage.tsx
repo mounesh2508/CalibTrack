@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { FlaskConical, ShieldCheck, Lock, Mail, User, ArrowRight, AlertCircle, Info } from 'lucide-react';
+import {
+  FlaskConical,
+  ShieldCheck,
+  Lock,
+  Mail,
+  User,
+  ArrowRight,
+  AlertCircle,
+  Info,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+} from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { api } from '../services/api';
 import { AuthUser } from '../types';
@@ -15,6 +27,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
   const [name, setName] = useState('');
   const [email, setEmail] = useState('admin@calibtrack-lab.com');
   const [password, setPassword] = useState('AdminPass123!');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,9 +61,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
           setIsLoading(false);
           return;
         }
+        if (password !== confirmPassword) {
+          setError('Passwords do not match. Please verify both password fields.');
+          setIsLoading(false);
+          return;
+        }
 
         const regRes = await api.register(name, email, password);
         setIsRegisterMode(false);
+        setConfirmPassword('');
         setSuccessNotice(
           regRes.message || 'Staff registration successful. A verification email has been sent to your inbox.'
         );
@@ -122,8 +143,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
               onClick={() => {
                 setIsRegisterMode(false);
                 setError(null);
+                setConfirmPassword('');
+                setShowPassword(false);
+                setShowConfirmPassword(false);
               }}
-              className={`flex-1 pb-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-px ${
+              className={`flex-1 pb-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-px cursor-pointer ${
                 !isRegisterMode
                   ? 'border-blue-500 text-white'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -136,8 +160,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
               onClick={() => {
                 setIsRegisterMode(true);
                 setError(null);
+                setConfirmPassword('');
+                setShowPassword(false);
+                setShowConfirmPassword(false);
+                // Clear prefilled admin credentials when switching to register fresh staff
+                if (email === 'admin@calibtrack-lab.com') {
+                  setEmail('');
+                  setPassword('');
+                }
               }}
-              className={`flex-1 pb-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-px ${
+              className={`flex-1 pb-3 text-xs font-semibold uppercase tracking-wider transition-colors border-b-2 -mb-px cursor-pointer ${
                 isRegisterMode
                   ? 'border-blue-500 text-white'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -217,7 +249,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
                     <button
                       type="button"
                       onClick={() => onNavigate('/verify-email')}
-                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-medium"
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
                     >
                       Enter verification token manually
                     </button>
@@ -269,25 +301,95 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Password
                 </label>
-                {!isRegisterMode && (
-                  <span className="text-[11px] text-slate-400">Min 8 chars</span>
-                )}
+                <span className="text-[11px] text-slate-400">Min 8 chars</span>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
                   required
-                  className="w-full h-10 pl-9 pr-3 text-sm bg-slate-900 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors"
+                  className="w-full h-10 pl-9 pr-10 text-sm bg-slate-900 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors font-mono tracking-tight"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 focus:outline-none cursor-pointer p-0.5 rounded transition-colors"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
               </div>
             </div>
 
             {isRegisterMode && (
-              <p className="text-[11px] text-slate-400 leading-relaxed">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Confirm Password
+                  </label>
+                </div>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    required
+                    className={`w-full h-10 pl-9 pr-10 text-sm bg-slate-900 border rounded-lg text-white placeholder:text-slate-500 focus:outline-none transition-colors font-mono tracking-tight ${
+                      confirmPassword.length > 0
+                        ? password === confirmPassword
+                          ? 'border-emerald-500/80 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20'
+                          : 'border-rose-500/80 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20'
+                        : 'border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200 focus:outline-none cursor-pointer p-0.5 rounded transition-colors"
+                    aria-label={showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'}
+                    title={showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'}
+                    tabIndex={-1}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Real-Time Password Matching Status */}
+                {confirmPassword.length > 0 ? (
+                  password === confirmPassword ? (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs text-emerald-400 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>Passwords match perfectly</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 mt-1.5 text-xs text-rose-400 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Passwords do not match</span>
+                    </div>
+                  )
+                ) : (
+                  <p className="text-[11px] text-slate-500 mt-1">Re-enter your chosen password to verify.</p>
+                )}
+              </div>
+            )}
+
+            {isRegisterMode && (
+              <p className="text-[11px] text-slate-400 leading-relaxed pt-1">
                 Registered staff accounts default to <strong>Technician (Lab Staff)</strong> role.
                 Administrator privileges are granted by system administrators.
               </p>

@@ -1,128 +1,153 @@
-# CalibTrack — Local Windows 404 Resolution & Setup Blueprint
+# CalibTrack — Authentication Enhancements & Zero-State Rectification Plan
 
-A targeted, step-by-step resolution to eliminate the `HTTP Error 404 (Not Found)` authentication error on Windows by synchronizing the local codebase, running the FastAPI backend alongside the React frontend in dual terminals, and verifying staff registration and login.
+This plan outlines the implementation of password visibility toggles with eye icons across sign-in and staff registration, real-time confirm-password matching validation, and complete elimination of ghost equipment, calibrations, and notifications for new technician accounts when instrument count is zero.
 
 ---
 
 ### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> Based on your responses, the root cause is confirmed:
-> 1. **Local Files Not Yet Synchronized**: Your local folder `D:\CalibTack-S5\CalibTrack-New` still has the older codebase where the proxy and dual-route registrations were not yet present.
-> 2. **Single Terminal Running Only Frontend**: You are currently running only `npm run dev` in one terminal. On Windows, Node.js cannot auto-spawn `python3` (which does not exist on Windows). Consequently, the FastAPI backend on port 8001 is not running at all, causing Express to return 404 when auth requests cannot be forwarded.
+> Based on your responses, the following key specifications are locked in:
+> 1. **Password Visibility Control**: Embedded eye icon toggle button (`Eye` / `EyeOff` from `lucide-react`) positioned inside the right side of password input fields on both the Sign In and Register Staff pages.
+> 2. **Confirm Password & Real-Time Validation**: An explicit "Confirm Password" field added to the Register Staff form with instant feedback while typing, displaying matching status indicators (green match verification vs. amber/rose mismatch warning) and blocking form submission if values diverge.
+> 3. **Clean Zero-State Rectification**: When an account or the laboratory has 0 registered instruments, all views (Dashboard stats and charts, Calibration logs, Notifications, and Recent Activity) strictly present clean, empty-state UI rather than falling back to mock or random legacy data.
 
-- **Confirmed Decision 1**: Run the FastAPI backend and Express/Vite frontend in **two separate terminals** on Windows.
-- **Confirmed Decision 2**: Synchronize the updated `server.ts`, `vite.config.ts`, and `backend/app/main.py` files to your local `D:\CalibTack-S5\CalibTrack-New` directory.
-- **Confirmed Decision 3**: Register the first staff account via the **Register Staff** tab to initialize credentials in `calibtrack_dev.db` with simulated email verification.
+- **Confirmed Decision 1**: Use internal trailing eye icon buttons with accessible aria labels and state toggles (`showPassword`, `showConfirmPassword`).
+- **Confirmed Decision 2**: Validate password equivalence on every keystroke (`onChange`) with color-coded feedback and submit guards requiring matching passwords and minimum 8 characters.
+- **Confirmed Decision 3**: Synchronize backend dashboard and calibration queries to return empty arrays when equipment count is zero, preventing ghost records or orphan notifications from appearing.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Establishes a seamless, reliable connection between the React + TypeScript frontend running on `http://localhost:3000` and the Python FastAPI metrology backend running on `http://127.0.0.1:8001`.
-- **Target Persona**: Lab Metrologists, Quality Control Technicians, and System Administrators running CalibTrack on local Windows development environments.
-- **Key Value**: Eliminates the 404 Authentication Notice error, ensures seamless proxy forwarding of registration, email verification, and JWT login, and enables complete offline-capable testing with SQLite.
+- **What It Does**: Provides laboratory technicians and QA metrologists with a secure, transparent credential entry experience (password visibility reveal and real-time confirmation checks) while ensuring that freshly created technician sessions start with an authentic zero-asset state free from rogue sample records.
+- **Target Persona**: Lab Metrologists, QC Technicians, and System Administrators registering new accounts or signing into laboratory equipment registries.
+- **Key Value**: Prevents user typos during password setup, increases sign-in confidence with visual inspection, and guarantees complete data integrity without confusing random mock equipment appearing in fresh accounts.
 
 ---
 
-## 2. User Experience & Local Workflow
+## 2. User Experience & Visual Design
+
+### Key User Flows
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        STEP-BY-STEP USER FLOW                          │
+│                   ENHANCED AUTHENTICATION & ZERO-STATE                 │
 └────────────────────────────────────────────────────────────────────────┘
 
-  Terminal 1 (Backend)                   Terminal 2 (Frontend)
-  py -m uvicorn backend.app.main:app     npm run dev
-  --host 127.0.0.1 --port 8001           (Starts server.ts on :3000)
-         │                                      │
-         ▼                                      ▼
-  FastAPI Active on :8001                Express + Vite on :3000
-         ▲                                      │
-         │  Proxy Request (/api/auth/*)        │
-         └──────────────────────────────────────┘
-                         │
-                         ▼
-             Browser at http://localhost:3000
-             1. Click "Register Staff"
-             2. Enter Name, Email, Password
-             3. Receive Simulation Link & Token
-             4. Click "Verify Account Now"
-             5. Sign In -> Full Dashboard Access
+  [ Sign In Tab ]                             [ Register Staff Tab ]
+  ┌───────────────────────────┐               ┌───────────────────────────┐
+  │ Staff Email Address       │               │ Full Staff Name           │
+  │ [ user@lab.com          ] │               │ [ Dr. Jane Doe          ] │
+  │                           │               │                           │
+  │ Password                  │               │ Staff Email Address       │
+  │ [ ••••••••••••       (👁) ] │               │ [ jane.doe@lab.com      ] │
+  │                           │               │                           │
+  │ [ Sign In to CalibTrack ] │               │ Password                  │
+  └───────────────────────────┘               │ [ ••••••••••••       (👁) ] │
+                                              │                           │
+                                              │ Confirm Password          │
+                                              │ [ ••••••••••••       (👁) ] │
+                                              │ ✓ Passwords match (green) │
+                                              │                           │
+                                              │ [ Create Staff Account ]  │
+                                              └───────────────────────────┘
+                                                            │
+                                                            ▼
+                                              New Technician Signs In
+                                                            │
+                                                            ▼
+                                              [ Clean Lab Zero-State ]
+                                              • Total Equipment: 0
+                                              • Calibrations: 0
+                                              • Notifications: 0
+                                              • Empty State Prompt:
+                                                "+ Add your first instrument"
 ```
 
-1. **Terminal 1 (FastAPI Service)**:
-   - Starts FastAPI with Uvicorn on `127.0.0.1:8001`.
-   - Auto-creates SQLite schema (`calibtrack_dev.db`) with `is_email_verified` and token fields.
-2. **Terminal 2 (Frontend & Reverse Proxy)**:
-   - Starts Express on `http://localhost:3000`.
-   - Reverse proxies all `/api/*` traffic to `http://127.0.0.1:8001/api/*` without stripping prefixes or failing silently.
-3. **Browser Interface**:
-   - The user opens `http://localhost:3000`.
-   - Clicking **Register Staff** sends `POST /api/auth/register`, which FastAPI receives and responds with `HTTP 201 Created` and a simulation verification token.
-   - The user clicks the on-screen verification button or visits `/verify-email?token=...`.
-   - The user logs in with their newly verified credentials and enters the metrology dashboard.
+1. **Sign In Mode**:
+   - The password input includes an embedded eye icon (`Eye` / `EyeOff`) on the right edge.
+   - Clicking toggles the input type between `password` and `text` with smooth transition, preserving focus and text selection.
+2. **Register Staff Mode**:
+   - Includes **Password** and **Confirm Password** fields, each with independent eye toggle controls.
+   - **Real-Time Match Indicator**:
+     - *Empty*: Neutral helper text ("Min 8 characters").
+     - *Mismatching*: Rose/amber warning banner with `AlertCircle` ("Passwords do not match").
+     - *Matching*: Crisp emerald verification badge with `CheckCircle2` ("Passwords match perfectly").
+   - The submit button remains disabled or rejects submission if passwords do not match or are under 8 characters.
+3. **New Technician Sign-In (Zero Equipment State)**:
+   - When a newly registered staff member signs in to a database with zero equipment:
+     - Dashboard StatCards display clean `0` values (Total: 0, Due Soon: 0, Overdue: 0, Calibrated: 0).
+     - Department Compliance chart displays zeroed bars without synthetic distribution.
+     - Upcoming Schedule shows clinical empty state: *"No equipment registered yet. Click '+ Add Equipment' to register your first laboratory asset."*
+     - Notification tray shows *"No notifications. All equipment schedules and alerts are synchronized."*
+     - Calibration Records table shows clean zero-state without ghost certificates.
+
+### Visual Styling & Discipline
+- **Aesthetic**: Deep clinical slate obsidian (`bg-slate-900` / `bg-slate-800`) matching CalibTrack's ISO 17025 metrology branding.
+- **Input Controls**: Flush 40px height inputs with `pr-10` padding to accommodate the absolute-positioned 16px eye icon button without overlapping long passwords.
+- **Zero-Pill Restraint**: Feedback indicators render as quiet inline text and subtle icons, avoiding bulky candy badge capsules.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Dual-Terminal Launch on Windows**
-  - *Chosen Approach*: Explicitly launch the FastAPI backend in Terminal 1 and `npm run dev` in Terminal 2.
-  - *Why*: On Windows, Node.js background process management (`child_process.spawn`) often encounters permission barriers, console window hiding, and missing path aliases (`python3` vs `py`). Dedicated terminals allow immediate visibility into Python logs and Uvicorn stack traces.
-  - *Alternatives Considered*: Single npm command with `concurrently`—rejected because Uvicorn interactive reload and Python venv activation can crash silently on Windows CMD/PowerShell.
+- **Decision 1: Client-Side Real-Time Password Comparison**
+  - *Chosen Approach*: Reactive React state evaluating `password === confirmPassword && confirmPassword.length > 0` directly on keystroke.
+  - *Why*: Provides immediate feedback before network submission, preventing frustrating round-trip form rejection.
+  - *Alternatives Considered*: Backend-only validation on form submit—rejected because it forces the user to wait for an API call before seeing a mismatch.
 
-- **Decision 2: Path-Preserving Resilient Proxy in `server.ts`**
-  - *Chosen Approach*: Normalizing incoming paths so `/api` is never omitted, and returning `HTTP 503 Service Unavailable` with actionable instructions if FastAPI is offline, rather than silently falling through to Vite's 404.
-  - *Why*: Prevents misleading 404 Not Found error banners and tells the user exactly which command to run if the backend service drops.
+- **Decision 2: Dual Independent Eye Toggles**
+  - *Chosen Approach*: Separate boolean flags (`showPassword` and `showConfirmPassword`) so the user can inspect either field independently.
+  - *Why*: Accommodates users who only wish to verify the confirmation field or want full visibility into both.
 
-- **Decision 3: Dual Route Registration in FastAPI (`backend/app/main.py`)**
-  - *Chosen Approach*: Mounting the router both at root and with `prefix="/api"`.
-  - *Why*: Ensures total compatibility whether a developer accesses FastAPI directly, via Vite proxy, or through Express.
+- **Decision 3: Backend & Frontend Zero-State Sanitization**
+  - *Chosen Approach*: Ensure backend endpoints (`/dashboard/summary`, `/calibration-records`, `/notifications`) return empty lists when equipment count is 0, and ensure frontend fallbacks do not substitute `initialEquipmentList`, `initialCalibrationRecords`, or `initialNotifications` when the backend returns 0 records.
+  - *Why*: Guarantees that a brand-new laboratory environment accurately mirrors the empty database.
 
 ---
 
-## 4. Technical Architecture & Component Hierarchy
+## 4. Technical Architecture & Data Strategy
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                      CALIBTRACK SYSTEM TOPOLOGY                        │
+│                        DATA FLOW & VALIDATION                          │
 └────────────────────────────────────────────────────────────────────────┘
 
-  Browser Client (http://localhost:3000)
-    │
-    ├── [GET  /*]             ──> Vite Middleware (React SPA Pages)
-    │
-    └── [POST /api/auth/login] ──> Express Reverse Proxy (server.ts)
-        [POST /api/auth/reg]        │
-                                    │ (Forward with hop-by-hop headers stripped)
-                                    ▼
-                              FastAPI Service (http://127.0.0.1:8001)
-                                    │
-                                    ├── Auth Router (/api/auth/*)
-                                    │     ├── Password Hashing (PBKDF2)
-                                    │     ├── Single-use Token Generator
-                                    │     └── JWT Access Token Signer
-                                    │
-                                    ▼
-                              SQLite Database (calibtrack_dev.db)
-                                  [users table: id, email, password_hash,
-                                   is_email_verified, token, expires_at]
+  LoginPage.tsx
+    ├── State: showPassword (bool), showConfirmPassword (bool)
+    ├── State: password (string), confirmPassword (string)
+    ├── Derived: isMatching = password === confirmPassword
+    └── Form Guard: canSubmit = isMatching && password.length >= 8
+              │
+              ▼ (POST /api/auth/register)
+  FastAPI Auth Service
+    └── Password hashed via PBKDF2-SHA256 -> calibtrack_dev.db
+              │
+              ▼ (User Logs In)
+  DashboardPage.tsx / App.tsx
+    ├── api.fetchDashboardSummary() ──> returns total_equipment: 0
+    ├── api.fetchEquipment()         ──> returns items: []
+    ├── api.fetchCalibrationRecords()──> returns items: []
+    └── api.fetchNotifications()     ──> returns items: []
+              │
+              ▼
+    Render Zero-State Components (No mockData substitution)
 ```
 
----
+### Component & State Mapping
 
-## 5. Step-by-Step Execution Plan
-
-1. **Synchronize Local Codebase**:
-   - Provide the exact file changes for `server.ts`, `vite.config.ts`, and `backend/app/main.py` so the local folder matches the validated repository.
-2. **Launch Dual Terminals**:
-   - **Terminal 1**: `py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001 --reload`
-   - **Terminal 2**: `npm run dev`
-3. **Verify Connectivity**:
-   - Test `http://127.0.0.1:8001/api/health` -> returns `{"status":"ok"}`.
-   - Test `http://localhost:3000/api/health` -> returns `{"status":"ok"}`.
-4. **Staff Registration & Verification Walkthrough**:
-   - Register a staff user at `http://localhost:3000`.
-   - Verify the account using the simulation link.
-   - Sign in and verify access to equipment records and compliance scheduler.
+1. **`src/pages/LoginPage.tsx`**:
+   - Add state: `showPassword: boolean`, `showConfirmPassword: boolean`, `confirmPassword: string`.
+   - Add eye icon toggle button inside the password container with `type="button"`, `onClick={() => setShowPassword(!showPassword)}`, and `aria-label="Toggle password visibility"`.
+   - Render confirm password input when `isRegisterMode === true` with identical eye toggle pattern.
+   - Render inline real-time validation indicator below confirm password.
+   - Update submit handler to verify `password === confirmPassword` before sending registration payload.
+2. **`src/App.tsx` & Data Sync**:
+   - Ensure `loadBackendData()` maintains strict empty arrays `[]` when `equipData.items` is empty, never falling back to `mockData` fixtures.
+   - Clean up orphan sample notifications or calibrations when `equipmentList.length === 0`.
+3. **`backend/app/routers/dashboard.py` & `backend/app/routers/calibration.py`**:
+   - In `get_dashboard_summary`: When `total == 0`, ensure `recent_calibration_activity` returns `[]`.
+   - In `list_calibration_records`: Only return records belonging to existing equipment in the database.
+4. **Verification & Build**:
+   - Verify TypeScript compilation, lint checks, and interactive behavior.

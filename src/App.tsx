@@ -50,30 +50,50 @@ export default function App() {
         api.fetchCalibrationRecords().catch(() => null),
       ]);
 
-      if (equipData && Array.isArray(equipData.items)) {
-        setEquipmentList(equipData.items);
+      const items = equipData && Array.isArray(equipData.items) ? equipData.items : [];
+      const equipIds = new Set(items.map((e) => e.id));
+
+      if (equipData !== null) {
+        setEquipmentList(items);
         setApiConnected(true);
-      } else if (equipData === null) {
+      } else {
         setApiConnected(false);
       }
 
-      if (notifsData && Array.isArray(notifsData.items)) {
-        setNotifications(notifsData.items);
-      }
+      if (items.length === 0) {
+        // Zero registered equipment: strictly zero out calibrations, activities, and instrument alerts
+        setCalibrationRecords([]);
+        setRecentActivities([]);
+        if (notifsData && Array.isArray(notifsData.items)) {
+          setNotifications(notifsData.items.filter((n) => !n.equipmentId && n.category === 'system'));
+        } else {
+          setNotifications([]);
+        }
+      } else {
+        // Filter calibrations and notifications to valid registered equipment
+        if (Array.isArray(calibData)) {
+          const validCalibs = calibData.filter(
+            (r) => equipIds.has(r.equipmentId) || equipIds.has(r.equipmentCode)
+          );
+          setCalibrationRecords(validCalibs);
+          const activities: RecentActivity[] = validCalibs.slice(0, 8).map((r: any) => ({
+            id: `ACT-${r.id}`,
+            type: 'calibration_completed',
+            title: 'Calibration Completed',
+            description: `${r.equipmentName || 'Instrument'} (${r.equipmentCode || 'EQ'}) calibrated by ${r.serviceProvider || r.technicianName}. Result: ${r.result}.`,
+            timestamp: r.calibrationDate || 'Recently',
+            actor: r.technicianName || 'Technician',
+            equipmentCode: r.equipmentCode,
+          }));
+          setRecentActivities(activities);
+        }
 
-      if (Array.isArray(calibData)) {
-        setCalibrationRecords(calibData);
-        // Build recent activities dynamically from actual calibration records
-        const activities: RecentActivity[] = calibData.slice(0, 8).map((r: any) => ({
-          id: `ACT-${r.id}`,
-          type: 'calibration_completed',
-          title: 'Calibration Completed',
-          description: `${r.equipmentName || 'Instrument'} (${r.equipmentCode || 'EQ'}) calibrated by ${r.serviceProvider || r.technicianName}. Result: ${r.result}.`,
-          timestamp: r.calibrationDate || 'Recently',
-          actor: r.technicianName || 'Technician',
-          equipmentCode: r.equipmentCode,
-        }));
-        setRecentActivities(activities);
+        if (notifsData && Array.isArray(notifsData.items)) {
+          const validNotifs = notifsData.items.filter(
+            (n) => !n.equipmentId || equipIds.has(n.equipmentId)
+          );
+          setNotifications(validNotifs);
+        }
       }
     } catch (err) {
       console.warn('[CalibTrack] Using clean data state:', err);

@@ -121,8 +121,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         .sort((a, b) => a.daysRemaining - b.daysRemaining)
         .slice(0, 6);
 
-  // Recent activity: map from backend recent calibrations (strictly empty when totalCount is 0)
-  const recentActivitiesList: RecentActivity[] = totalCount === 0
+  // Recent activity: map from backend recent calibrations (strictly empty when totalCount is 0 or equipmentList is empty)
+  const recentActivitiesList: RecentActivity[] = (totalCount === 0 || initialEquipmentList.length === 0)
     ? []
     : summary && summary.recentCalibrationRecords && summary.recentCalibrationRecords.length > 0
     ? summary.recentCalibrationRecords.map((r: any) => ({
@@ -134,7 +134,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         actor: r.performed_by || 'Metrologist',
         equipmentCode: r.equipment_code || undefined,
       }))
-    : initialActivities;
+    : (initialEquipmentList.length === 0 ? [] : initialActivities);
 
   return (
     <div className="space-y-6">

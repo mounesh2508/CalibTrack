@@ -223,7 +223,6 @@ export const ReportsPage: React.FC<ReportsPageProps> = ({
                   size="sm"
                   icon={<Download className="w-3.5 h-3.5" />}
                   onClick={() => {
-                    alert(`Downloaded ${previewReport}.${format.toLowerCase()} successfully.`);
                     setPreviewReport(null);
                   }}
                 >
