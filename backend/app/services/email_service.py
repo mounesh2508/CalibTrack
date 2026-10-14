@@ -143,3 +143,124 @@ Please schedule calibration verification with an accredited metrology provider.
         error_name = type(e).__name__
         print(f"[Email Dispatch Error] Failed to send email to recipient: {error_name}")
         return False, f"SMTP failure ({error_name})"
+
+
+# -----------------------------------------------------------------------------
+# Staff Email Verification & Simulation Support
+# -----------------------------------------------------------------------------
+_simulated_emails = []
+
+def get_simulated_emails():
+    """Returns a list of simulated emails sent when SMTP is unconfigured."""
+    return list(_simulated_emails)
+
+def clear_simulated_emails():
+    """Clears the in-memory simulated email buffer (useful for unit tests)."""
+    _simulated_emails.clear()
+
+def get_frontend_base_url() -> str:
+    url = os.getenv("FRONTEND_URL") or os.getenv("APP_URL") or "http://localhost:3000"
+    return url.rstrip("/")
+
+def send_verification_email(
+    recipient_email: str,
+    recipient_name: str,
+    verification_token: str,
+    base_url: Optional[str] = None
+) -> Tuple[bool, Optional[str], str]:
+    """
+    Sends an email verification link to a newly registered staff member.
+    If SMTP is configured, dispatches real email via SMTP.
+    If SMTP is unconfigured, records email in development simulation mode.
+    Returns: (sent_live: bool, message: Optional[str], verification_url: str)
+    """
+    origin = (base_url or get_frontend_base_url()).rstrip("/")
+    verification_url = f"{origin}/verify-email?token={verification_token}"
+
+    subject = "[CalibTrack Metrology] Verify Your Staff Account Email"
+    text_content = f"""
+CALIBTRACK LABORATORY PORTAL - EMAIL VERIFICATION
+==================================================
+Hello {recipient_name},
+
+Thank you for registering your staff account on CalibTrack.
+Please verify your email address to activate your account by opening the link below:
+
+{verification_url}
+
+This verification link will expire in 24 hours and can only be used once.
+
+Security Notice: If you did not create a CalibTrack laboratory account, you can safely ignore this email.
+""".strip()
+
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; color: #1e293b; background-color: #f8fafc; padding: 20px;">
+      <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #2563eb; padding: 20px 24px; color: #ffffff;">
+          <h2 style="margin: 0; font-size: 18px; font-weight: 600;">CalibTrack Staff Verification</h2>
+          <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.9;">Laboratory Metrology & Compliance Portal</p>
+        </div>
+        <div style="padding: 24px;">
+          <p style="margin-top: 0;">Hello <strong>{recipient_name}</strong>,</p>
+          <p>Thank you for registering with CalibTrack. To complete your staff registration and activate your account, please verify your email address by clicking the button below:</p>
+          
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="{verification_url}" style="display: inline-block; background-color: #2563eb; color: #ffffff; text-decoration: none; font-weight: 600; font-size: 14px; padding: 12px 28px; border-radius: 8px;">Verify Staff Email</a>
+          </div>
+
+          <p style="font-size: 13px; color: #64748b; word-break: break-all;">Or copy and paste this verification URL into your browser:<br/><a href="{verification_url}" style="color: #2563eb;">{verification_url}</a></p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #94a3b8; margin-bottom: 0;">This verification link is valid for 24 hours and is single-use. If you did not register for CalibTrack, you can safely disregard this message.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """.strip()
+
+    if not is_smtp_configured():
+        # Development / Sandbox simulation mode
+        simulation_entry = {
+            "type": "EMAIL_VERIFICATION",
+            "recipient_email": recipient_email,
+            "recipient_name": recipient_name,
+            "subject": subject,
+            "verification_url": verification_url,
+            "verification_token": verification_token,
+            "mode": "DEVELOPMENT_SIMULATION",
+        }
+        _simulated_emails.append(simulation_entry)
+        print(f"[Email Simulation] Staff verification simulated for {recipient_email}. Link: {verification_url}")
+        return False, "SMTP is not configured. Email verification was simulated in development mode.", verification_url
+
+    host = get_smtp_host()
+    port = get_smtp_port()
+    user = get_smtp_user()
+    password = get_smtp_password()
+    from_addr = get_from_email()
+    timeout = get_smtp_timeout()
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = recipient_email
+    msg.attach(MIMEText(text_content, "plain"))
+    msg.attach(MIMEText(html_content, "html"))
+
+    try:
+        server = smtplib.SMTP(host=host, port=port, timeout=timeout)
+        try:
+            if port == 587:
+                server.starttls()
+            if user and password:
+                server.login(user, password)
+            server.sendmail(from_addr, [recipient_email], msg.as_string())
+            return True, None, verification_url
+        finally:
+            server.quit()
+    except Exception as e:
+        error_name = type(e).__name__
+        print(f"[Email Dispatch Error] Failed to send verification email: {error_name}")
+        return False, f"SMTP failure ({error_name})", verification_url

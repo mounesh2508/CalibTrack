@@ -306,7 +306,17 @@ export const api = {
     return session;
   },
 
-  async register(name: string, email: string, password: string): Promise<AuthSession> {
+  async register(name: string, email: string, password: string): Promise<{
+    message: string;
+    is_email_verified: boolean;
+    user: AuthUser;
+    simulation?: {
+      mode: string;
+      message: string;
+      verification_token: string;
+      verification_url: string;
+    } | null;
+  }> {
     const res = await request<any>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({
@@ -316,8 +326,9 @@ export const api = {
       }),
     });
 
-    const session: AuthSession = {
-      token: res.access_token,
+    return {
+      message: res.message,
+      is_email_verified: res.is_email_verified,
       user: {
         id: res.user.id,
         name: res.user.name,
@@ -325,12 +336,32 @@ export const api = {
         role: res.user.role,
         created_at: res.user.created_at,
       },
-      expiresAt: res.expires_at,
+      simulation: res.simulation || null,
     };
+  },
 
-    setStoredToken(session.token);
-    setStoredUser(session.user);
-    return session;
+  async verifyEmail(token: string): Promise<{ success: boolean; message: string; email: string }> {
+    return request<{ success: boolean; message: string; email: string }>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token: token.trim() }),
+    });
+  },
+
+  async resendVerification(email: string): Promise<{
+    success: boolean;
+    message: string;
+    already_verified?: boolean;
+    simulation?: {
+      mode: string;
+      message: string;
+      verification_token: string;
+      verification_url: string;
+    } | null;
+  }> {
+    return request<any>('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.trim() }),
+    });
   },
 
   async fetchCurrentUser(): Promise<AuthUser> {

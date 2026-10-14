@@ -50,14 +50,16 @@ class TestStageBAuth(unittest.TestCase):
             name="Lab Administrator",
             email="admin@lab-test.com",
             password_hash=hash_password("AdminSecurePass123!"),
-            role="ADMIN"
+            role="ADMIN",
+            is_email_verified=True,
         )
         self.tech_user = User(
             id="tech-uuid-1",
             name="Lab Technician",
             email="tech@lab-test.com",
             password_hash=hash_password("TechSecurePass123!"),
-            role="TECHNICIAN"
+            role="TECHNICIAN",
+            is_email_verified=True,
         )
         db.add(self.admin_user)
         db.add(self.tech_user)

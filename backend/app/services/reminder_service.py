@@ -54,11 +54,18 @@ def update_reminder_settings(
 def evaluate_and_dispatch_reminders(
     db: Session,
     reference_date: Optional[date] = None,
+    dry_run: bool = False,
+    target_equipment_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Evaluates all laboratory equipment against calibration due dates and reminder settings.
     Dispatches in-app notifications and email alerts with guaranteed multi-worker deduplication
     backed by database uniqueness constraints on ReminderLog.
+
+    Features:
+    - Safe retry: Delivery failures can be retried without hitting database unique constraint errors.
+    - Dry-run mode: Evaluates which equipment needs alerts without sending emails or writing logs.
+    - Single-asset target: Can evaluate a specific equipment ID for isolated testing.
     """
     today = reference_date or date.today()
     settings = get_or_create_reminder_settings(db)
@@ -67,8 +74,11 @@ def evaluate_and_dispatch_reminders(
     admin_user = db.query(User).filter(User.role == "ADMIN").first()
     default_recipient = admin_user.email if admin_user else "admin@calibtrack.com"
 
-    # Query all active equipment with a configured next_calibration_date
-    equipment_items = db.query(Equipment).filter(Equipment.next_calibration_date.isnot(None)).all()
+    # Query active equipment with next_calibration_date
+    query = db.query(Equipment).filter(Equipment.next_calibration_date.isnot(None))
+    if target_equipment_id:
+        query = query.filter(Equipment.id == target_equipment_id)
+    equipment_items = query.all()
 
     evaluated_count = len(equipment_items)
     in_app_created = 0
@@ -99,9 +109,12 @@ def evaluate_and_dispatch_reminders(
         eq_details = {
             "equipment_id": eq.id,
             "equipment_code": eq.equipment_code,
+            "equipment_name": eq.name,
+            "department": eq.department or "Laboratory",
             "next_due_date": due_date.isoformat(),
             "days_remaining": days_remaining,
             "reminder_type": reminder_type,
+            "is_overdue": is_overdue,
             "in_app_status": "disabled" if not settings.in_app_enabled else "pending",
             "email_status": "disabled" if not settings.email_enabled else "pending",
         }
@@ -110,7 +123,6 @@ def evaluate_and_dispatch_reminders(
         # Channel 1: In-App Notifications
         # ---------------------------------------------------------------------
         if settings.in_app_enabled:
-            # Deduplication check: Has an IN_APP reminder already been logged for this equipment, due cycle, and type?
             existing_log = db.query(ReminderLog).filter(
                 ReminderLog.equipment_id == eq.id,
                 ReminderLog.cycle_due_date == due_date,
@@ -122,9 +134,11 @@ def evaluate_and_dispatch_reminders(
             if existing_log:
                 in_app_skipped += 1
                 eq_details["in_app_status"] = "skipped_duplicate"
+            elif dry_run:
+                in_app_created += 1
+                eq_details["in_app_status"] = "dry_run_simulated"
             else:
                 try:
-                    # Create notification
                     title = f"Calibration {'Overdue' if is_overdue else 'Due Soon'}: {eq.equipment_code}"
                     msg = (
                         f"Equipment '{eq.name}' ({eq.equipment_code}) in {eq.department or 'Lab'} "
@@ -144,7 +158,6 @@ def evaluate_and_dispatch_reminders(
                     )
                     db.add(notif)
 
-                    # Durable deduplication log
                     log_entry = ReminderLog(
                         equipment_id=eq.id,
                         cycle_due_date=due_date,
@@ -158,32 +171,37 @@ def evaluate_and_dispatch_reminders(
                     in_app_created += 1
                     eq_details["in_app_status"] = "created"
                 except IntegrityError:
-                    # Handled concurrent duplicate race condition from another worker
                     db.rollback()
                     in_app_skipped += 1
                     eq_details["in_app_status"] = "skipped_duplicate_concurrent"
 
         # ---------------------------------------------------------------------
-        # Channel 2: Email Notifications
+        # Channel 2: Email Notifications (with Safe Retries)
         # ---------------------------------------------------------------------
         if settings.email_enabled:
-            # Deduplication check: Has an EMAIL reminder already been successfully SENT?
+            # Query existing log for this exact equipment, cycle, and channel
             existing_email_log = db.query(ReminderLog).filter(
                 ReminderLog.equipment_id == eq.id,
                 ReminderLog.cycle_due_date == due_date,
                 ReminderLog.reminder_type == reminder_type,
                 ReminderLog.channel == "EMAIL",
-                ReminderLog.status == "SENT",
             ).first()
 
-            if existing_email_log:
+            if existing_email_log and existing_email_log.status == "SENT":
                 emails_skipped += 1
                 eq_details["email_status"] = "skipped_duplicate"
-            else:
+            elif dry_run:
                 recipient = default_recipient
-                # If equipment creator has an email, prefer it
                 if eq.creator and eq.creator.email:
                     recipient = eq.creator.email
+                emails_sent += 1
+                eq_details["email_status"] = "dry_run_simulated"
+                eq_details["email_recipient"] = recipient
+            else:
+                recipient = default_recipient
+                if eq.creator and eq.creator.email:
+                    recipient = eq.creator.email
+                eq_details["email_recipient"] = recipient
 
                 # Dispatch email via SMTP service
                 success, err_msg = send_calibration_reminder_email(
@@ -197,15 +215,22 @@ def evaluate_and_dispatch_reminders(
                 )
 
                 try:
-                    email_log = ReminderLog(
-                        equipment_id=eq.id,
-                        cycle_due_date=due_date,
-                        reminder_type=reminder_type,
-                        channel="EMAIL",
-                        status="SENT" if success else "FAILED",
-                        error_message=err_msg,
-                    )
-                    db.add(email_log)
+                    if existing_email_log:
+                        # Safely update existing FAILED log on retry without unique constraint violation
+                        existing_email_log.status = "SENT" if success else "FAILED"
+                        existing_email_log.error_message = err_msg if not success else None
+                        existing_email_log.sent_at = datetime.utcnow()
+                    else:
+                        email_log = ReminderLog(
+                            equipment_id=eq.id,
+                            cycle_due_date=due_date,
+                            reminder_type=reminder_type,
+                            channel="EMAIL",
+                            status="SENT" if success else "FAILED",
+                            error_message=err_msg,
+                        )
+                        db.add(email_log)
+
                     db.commit()
 
                     if success:
@@ -224,6 +249,7 @@ def evaluate_and_dispatch_reminders(
     return {
         "success": True,
         "reference_date": today.isoformat(),
+        "dry_run": dry_run,
         "evaluated_equipment_count": evaluated_count,
         "settings": {
             "reminder_days_before": settings.reminder_days_before,

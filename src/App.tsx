@@ -10,6 +10,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
+import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { Modal } from './components/common/Modal';
 import { FormField, Input, Select, Textarea } from './components/common/FormField';
 import { Button } from './components/common/Button';
@@ -286,6 +287,11 @@ export default function App() {
     await api.markNotificationRead(id);
   };
 
+  // Route: Staff Email Verification
+  if (currentPath.startsWith('/verify-email')) {
+    return <VerifyEmailPage onNavigate={navigate} />;
+  }
+
   // Authentication Guard: Redirect unauthenticated users to Login
   if (!currentUser || currentPath === '/login') {
     return (
@@ -297,6 +303,7 @@ export default function App() {
           loadBackendData();
         }}
         sessionNotice={sessionNotice}
+        onNavigate={navigate}
       />
     );
   }

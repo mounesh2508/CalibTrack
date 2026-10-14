@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, Literal
+from typing import Optional, Literal, Dict, Any
 from datetime import datetime
 
 class UserLogin(BaseModel):
@@ -17,6 +17,7 @@ class UserProfileResponse(BaseModel):
     name: str
     email: str
     role: str
+    is_email_verified: bool = False
     created_at: Optional[datetime] = None
 
     class Config:
@@ -28,6 +29,33 @@ class TokenResponse(BaseModel):
     expires_in: int
     expires_at: str
     user: UserProfileResponse
+
+class UserRegisterResponse(BaseModel):
+    message: str
+    user: UserProfileResponse
+    is_email_verified: bool = False
+    access_token: Optional[str] = None
+    token_type: Optional[str] = None
+    expires_in: Optional[int] = None
+    expires_at: Optional[str] = None
+    simulation: Optional[Dict[str, Any]] = None
+
+class VerifyEmailRequest(BaseModel):
+    token: str = Field(..., min_length=10, description="Verification token sent via email")
+
+class VerifyEmailResponse(BaseModel):
+    success: bool
+    message: str
+    email: str
+
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+class ResendVerificationResponse(BaseModel):
+    success: bool
+    message: str
+    already_verified: bool = False
+    simulation: Optional[Dict[str, Any]] = None
 
 class UserRoleUpdate(BaseModel):
     role: Literal["ADMIN", "TECHNICIAN"] = Field(..., description="Target role: ADMIN or TECHNICIAN")

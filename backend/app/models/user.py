@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
 
@@ -12,6 +12,10 @@ class User(Base):
     email = Column(String(255), nullable=False, unique=True, index=True)
     password_hash = Column(String(255), nullable=False)
     role = Column(String(50), nullable=False, default="TECHNICIAN")  # ADMIN, TECHNICIAN
+    is_email_verified = Column(Boolean, nullable=False, default=False)
+    email_verification_token = Column(String(255), nullable=True, index=True)
+    email_verification_token_expires_at = Column(DateTime, nullable=True)
+    last_verification_email_sent_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

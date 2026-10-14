@@ -1,6 +1,6 @@
-from typing import Optional
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, EmailStr
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from backend.app.database import get_db
@@ -11,7 +11,7 @@ from backend.app.services.reminder_service import (
     update_reminder_settings,
     evaluate_and_dispatch_reminders,
 )
-from backend.app.services.email_service import is_smtp_configured
+from backend.app.services.email_service import is_smtp_configured, send_calibration_reminder_email
 
 router = APIRouter(prefix="/reminders", tags=["Calibration Reminders"])
 
@@ -25,6 +25,9 @@ class ReminderSettingsResponse(BaseModel):
     email_enabled: bool
     in_app_enabled: bool
     smtp_configured: bool
+
+class TestEmailPayload(BaseModel):
+    recipient_email: Optional[EmailStr] = None
 
 @router.get("/settings", response_model=ReminderSettingsResponse, summary="Get reminder configuration")
 def get_settings(
@@ -71,12 +74,45 @@ def update_settings(
 
 @router.post("/trigger", summary="Manually trigger reminder evaluation")
 def trigger_reminders(
+    dry_run: bool = Query(False, description="Simulate evaluation without modifying database or sending real emails"),
+    equipment_id: Optional[str] = Query(None, description="Evaluate single specific equipment asset"),
     current_user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ):
     """
     Manually triggers evaluation of calibration due dates and reminder dispatch.
+    Supports dry-run simulation mode and single-asset target.
     SECURITY: Requires authenticated staff. Protected against unauthenticated public access.
     """
-    result = evaluate_and_dispatch_reminders(db=db)
+    result = evaluate_and_dispatch_reminders(
+        db=db,
+        dry_run=dry_run,
+        target_equipment_id=equipment_id,
+    )
     return result
+
+@router.post("/test-email", summary="Send sample test alert to a single recipient (Admin only)")
+def send_test_reminder_email(
+    payload: Optional[TestEmailPayload] = None,
+    current_admin: User = Depends(require_admin),
+):
+    """
+    Sends a single test calibration alert email to verify SMTP delivery safely.
+    SECURITY: Strictly requires ADMIN role. Never sends test emails to every user.
+    """
+    target_email = payload.recipient_email if payload and payload.recipient_email else current_admin.email
+    success, err_msg = send_calibration_reminder_email(
+        recipient_email=str(target_email),
+        equipment_code="TEST-ASSET-01",
+        equipment_name="Metrology Verification Standard (Test Run)",
+        department="Quality Assurance Test",
+        due_date="2026-12-31",
+        days_remaining=5,
+        is_overdue=False,
+    )
+    return {
+        "success": success,
+        "recipient": target_email,
+        "smtp_configured": is_smtp_configured(),
+        "error_message": err_msg,
+    }

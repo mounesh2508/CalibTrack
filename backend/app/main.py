@@ -9,6 +9,27 @@ from backend.app.scheduler import scheduler
 # Create tables on startup if not already created
 Base.metadata.create_all(bind=engine)
 
+def _ensure_schema_compatibility():
+    try:
+        from sqlalchemy import inspect, text
+        with engine.connect() as conn:
+            inspector = inspect(conn)
+            if "users" in inspector.get_table_names():
+                columns = [c["name"] for c in inspector.get_columns("users")]
+                if "is_email_verified" not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_email_verified BOOLEAN DEFAULT 0 NOT NULL"))
+                if "email_verification_token" not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN email_verification_token VARCHAR(255)"))
+                if "email_verification_token_expires_at" not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN email_verification_token_expires_at DATETIME"))
+                if "last_verification_email_sent_at" not in columns:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN last_verification_email_sent_at DATETIME"))
+                conn.commit()
+    except Exception as e:
+        print(f"[Database Warning] Schema compatibility check: {e}")
+
+_ensure_schema_compatibility()
+
 app = FastAPI(
     title="CalibTrack Laboratory Metrology API",
     description="FastAPI Backend for Laboratory Equipment Calibration Management",

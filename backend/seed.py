@@ -23,6 +23,7 @@ def seed_database():
             email="sarah.lin@calibtrack.lab",
             password_hash=hash_password("AdminPass123!"),
             role="ADMIN",
+            is_email_verified=True,
         )
         admin_portal = User(
             id="usr-admin-02",
@@ -30,6 +31,7 @@ def seed_database():
             email="admin@calibtrack-lab.com",
             password_hash=hash_password("AdminPass123!"),
             role="ADMIN",
+            is_email_verified=True,
         )
         tech_user = User(
             id="usr-tech-02",
@@ -37,6 +39,7 @@ def seed_database():
             email="marcus.vance@calibtrack.lab",
             password_hash=hash_password("TechPass123!"),
             role="TECHNICIAN",
+            is_email_verified=True,
         )
         db.add_all([admin_user, admin_portal, tech_user])
         db.flush()

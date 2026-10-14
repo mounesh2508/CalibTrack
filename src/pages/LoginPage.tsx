@@ -7,19 +7,31 @@ import { AuthUser } from '../types';
 interface LoginPageProps {
   onLogin: (user: AuthUser) => void;
   sessionNotice?: string | null;
+  onNavigate?: (path: string) => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, onNavigate }) => {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('admin@calibtrack-lab.com');
   const [password, setPassword] = useState('AdminPass123!');
   const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [isUnverified, setIsUnverified] = useState(false);
+  const [simulationData, setSimulationData] = useState<{
+    mode?: string;
+    message?: string;
+    verification_token?: string;
+    verification_url?: string;
+  } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessNotice(null);
+    setIsUnverified(false);
     setIsLoading(true);
 
     try {
@@ -35,16 +47,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice }) 
           return;
         }
 
-        const session = await api.register(name, email, password);
-        onLogin(session.user);
+        const regRes = await api.register(name, email, password);
+        setIsRegisterMode(false);
+        setSuccessNotice(
+          regRes.message || 'Staff registration successful. A verification email has been sent to your inbox.'
+        );
+        if (regRes.simulation) {
+          setSimulationData(regRes.simulation);
+        }
       } else {
         const session = await api.login(email, password);
         onLogin(session.user);
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please verify your credentials.');
+      const msg = err.message || 'Authentication failed. Please verify your credentials.';
+      setError(msg);
+      if (msg.toLowerCase().includes('verif')) {
+        setIsUnverified(true);
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResendFromLogin = async () => {
+    if (!email.trim()) return;
+    setIsResending(true);
+    try {
+      const res = await api.resendVerification(email);
+      setSuccessNotice(res.message || 'A fresh verification link has been sent to your email.');
+      if (res.simulation) {
+        setSimulationData(res.simulation);
+      }
+      setIsUnverified(false);
+      setError(null);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification email.');
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -107,19 +147,83 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice }) 
             </button>
           </div>
 
+          {/* Success Notice */}
+          {successNotice && (
+            <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 space-y-2">
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-semibold">Registration Update</strong>
+                  <span>{successNotice}</span>
+                </div>
+              </div>
+              {simulationData && simulationData.verification_url && (
+                <div className="p-2.5 rounded bg-slate-900/80 border border-emerald-500/20 text-[11px] space-y-1.5 text-slate-300">
+                  <span className="font-semibold text-emerald-300 block">Development Simulation Preview:</span>
+                  <p className="text-slate-400">SMTP is unconfigured; use this simulated verification link to activate your account:</p>
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const path = simulationData.verification_url!.replace(/^https?:\/\/[^/]+/, '');
+                        if (onNavigate) {
+                          onNavigate(path);
+                        } else {
+                          window.location.href = simulationData.verification_url!;
+                        }
+                      }}
+                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-medium transition-colors cursor-pointer"
+                    >
+                      Verify Account Now →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Session Expiry or Custom Notice */}
-          {sessionNotice && !error && (
+          {sessionNotice && !error && !successNotice && (
             <div className="mb-4 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs text-amber-200">
               <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <span>{sessionNotice}</span>
             </div>
           )}
 
-          {/* Error Banner */}
+          {/* Error Banner with Unverified Email Action */}
           {error && (
-            <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-start gap-2.5 text-xs text-rose-200">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-              <span>{error}</span>
+            <div className="mb-4 p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-200 space-y-2">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-semibold">Authentication Notice</strong>
+                  <span>{error}</span>
+                </div>
+              </div>
+
+              {isUnverified && (
+                <div className="pt-2 border-t border-rose-500/20 flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-[11px] h-7 px-2.5 bg-rose-950/40 text-rose-200 border-rose-700/60 hover:bg-rose-900/60"
+                    isLoading={isResending}
+                    onClick={handleResendFromLogin}
+                  >
+                    Resend Verification Link
+                  </Button>
+                  {onNavigate && (
+                    <button
+                      type="button"
+                      onClick={() => onNavigate('/verify-email')}
+                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-medium"
+                    >
+                      Enter verification token manually
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
