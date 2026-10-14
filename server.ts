@@ -14,21 +14,29 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const FASTAPI_URL = process.env.FASTAPI_URL || process.env.BACKEND_URL || 'http://127.0.0.1:8001';
+const fastApiTarget = new URL(FASTAPI_URL);
+
 let fastApiProcess: any = null;
 
 function ensureFastApiBackend() {
-  const req = http.get('http://127.0.0.1:8001/api/health', () => {
-    console.log('[CalibTrack] FastAPI backend is already active on 127.0.0.1:8001.');
+  const healthUrl = `${FASTAPI_URL.replace(/\/$/, '')}/api/health`;
+  const req = http.get(healthUrl, () => {
+    console.log(`[CalibTrack] FastAPI backend is already active on ${FASTAPI_URL}.`);
   });
   req.on('error', () => {
-    console.log('[CalibTrack] Launching FastAPI backend on 127.0.0.1:8001...');
+    console.log(`[CalibTrack] Launching FastAPI backend on ${FASTAPI_URL}...`);
+    const isWin = process.platform === 'win32';
+    const pythonCmd = isWin ? 'py' : 'python3';
+    const port = fastApiTarget.port || '8001';
+    const host = fastApiTarget.hostname || '127.0.0.1';
     fastApiProcess = spawn(
-      'python3',
-      ['-m', 'uvicorn', 'backend.app.main:app', '--port', '8001', '--host', '127.0.0.1'],
-      { stdio: 'inherit' }
+      pythonCmd,
+      ['-m', 'uvicorn', 'backend.app.main:app', '--port', port, '--host', host],
+      { stdio: 'inherit', shell: isWin }
     );
     fastApiProcess.on('error', (err: any) => {
-      console.warn('[CalibTrack] Note: Could not spawn uvicorn process directly:', err.message);
+      console.warn(`[CalibTrack] Note: Could not spawn uvicorn process directly with ${pythonCmd}:`, err.message);
     });
   });
 }
@@ -57,9 +65,21 @@ async function startServer() {
 
   // 3. Mount Backend REST API (FastAPI proxy with fallback to Express router)
   app.use('/api', (req, res, next) => {
-    const targetUrl = new URL(req.originalUrl || req.url, 'http://127.0.0.1:8001');
+    // Reconstruct full request path, ensuring /api is always present
+    let rawPath = req.originalUrl || req.url || '';
+    if (!rawPath.startsWith('/api')) {
+      rawPath = `/api${rawPath.startsWith('/') ? '' : '/'}${rawPath}`;
+    }
+    const [pathname, search] = rawPath.split('?');
+    const queryString = search ? `?${search}` : '';
+
     const headers: http.OutgoingHttpHeaders = { ...req.headers };
-    headers.host = '127.0.0.1:8001';
+    headers.host = `${fastApiTarget.hostname}:${fastApiTarget.port || 8001}`;
+    // Remove hop-by-hop headers that can interfere with proxy connection
+    delete headers['connection'];
+    delete headers['upgrade'];
+    delete headers['keep-alive'];
+    delete headers['transfer-encoding'];
 
     let bodyBuffer: Buffer | null = null;
     if (req.body && Object.keys(req.body).length > 0) {
@@ -67,13 +87,15 @@ async function startServer() {
       bodyBuffer = Buffer.from(bodyStr);
       headers['content-length'] = String(bodyBuffer.length);
       headers['content-type'] = 'application/json';
+    } else if (req.headers['content-length'] && Number(req.headers['content-length']) === 0) {
+      headers['content-length'] = '0';
     }
 
     const proxyReq = http.request(
       {
-        hostname: '127.0.0.1',
-        port: 8001,
-        path: targetUrl.pathname + targetUrl.search,
+        hostname: fastApiTarget.hostname,
+        port: Number(fastApiTarget.port) || 8001,
+        path: pathname + queryString,
         method: req.method,
         headers,
         timeout: 10000,
@@ -84,8 +106,24 @@ async function startServer() {
       }
     );
 
-    proxyReq.on('error', () => {
-      return apiRouter(req, res, next);
+    proxyReq.on('error', (err: any) => {
+      console.warn(`[CalibTrack Proxy] Could not connect to FastAPI at ${FASTAPI_URL} (${req.method} ${pathname}):`, err.message);
+
+      // If it is an auth endpoint, Express router doesn't implement auth; return clear 503 with instructions
+      if (pathname.includes('/auth/')) {
+        return res.status(503).json({
+          detail: `FastAPI authentication service is unavailable at ${FASTAPI_URL}. Please start FastAPI using: py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001`,
+          error: err.code || err.message,
+        });
+      }
+
+      // Fall back to Express router for mock/in-memory data routes
+      return apiRouter(req, res, () => {
+        return res.status(503).json({
+          detail: `Backend service is unavailable at ${FASTAPI_URL}. Please ensure FastAPI is running.`,
+          error: err.code || err.message,
+        });
+      });
     });
 
     if (bodyBuffer) {

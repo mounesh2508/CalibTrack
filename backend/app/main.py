@@ -59,9 +59,10 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------
-# Health Endpoint
+# Health Endpoint (supports both /api/health and /health)
 # ---------------------------------------------------------------------
 @app.get("/api/health", tags=["Health"])
+@app.get("/health", tags=["Health"])
 def health_check():
     return {"status": "ok"}
 
@@ -74,6 +75,9 @@ app.include_router(calibration.router, prefix="/api")
 app.include_router(notifications.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(reminders.router, prefix="/api")
+
+# Also mount auth router at root for resilience if reverse proxy strips /api
+app.include_router(auth.router)
 
 # ---------------------------------------------------------------------
 # Scheduler Lifecycle
