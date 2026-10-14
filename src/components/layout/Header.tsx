@@ -145,27 +145,34 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   </div>
                   <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
-                    {notifications.slice(0, 4).map((n) => (
-                      <div
-                        key={n.id}
-                        onClick={() => {
-                          setShowNotifMenu(false);
-                          if (n.equipmentId) onNavigate(`/equipment/${n.equipmentId}`);
-                          else onNavigate('/notifications');
-                        }}
-                        className={`p-3 text-xs hover:bg-slate-50 cursor-pointer transition-colors ${
-                          !n.read ? 'bg-blue-50/30' : ''
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="font-semibold text-slate-800">{n.title}</p>
-                          <span className="text-[10px] text-slate-400 shrink-0">{n.timestamp}</span>
-                        </div>
-                        <p className="text-slate-600 mt-1 line-clamp-2 leading-relaxed text-[11px]">
-                          {n.description}
-                        </p>
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-slate-400 text-xs">
+                        <p className="font-medium text-slate-600">No notifications</p>
+                        <p className="text-[11px] text-slate-400 mt-1">All calibrations and equipment updates are synchronized.</p>
                       </div>
-                    ))}
+                    ) : (
+                      notifications.slice(0, 4).map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            setShowNotifMenu(false);
+                            if (n.equipmentId) onNavigate(`/equipment/${n.equipmentId}`);
+                            else onNavigate('/notifications');
+                          }}
+                          className={`p-3 text-xs hover:bg-slate-50 cursor-pointer transition-colors ${
+                            !n.read ? 'bg-blue-50/30' : ''
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-slate-800">{n.title}</p>
+                            <span className="text-[10px] text-slate-400 shrink-0">{n.timestamp}</span>
+                          </div>
+                          <p className="text-slate-600 mt-1 line-clamp-2 leading-relaxed text-[11px]">
+                            {n.description}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                   <div className="p-2 border-t border-slate-100 bg-slate-50/70 text-center">
                     <button

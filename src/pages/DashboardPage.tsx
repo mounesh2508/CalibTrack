@@ -75,23 +75,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const overdueCount = summary ? summary.overdueCount : initialEquipmentList.filter((e) => e.status === 'overdue').length;
   const calibratedCount = summary ? summary.calibratedCount : initialEquipmentList.filter((e) => e.status === 'calibrated').length;
 
-  const statusPieData = [
-    { name: 'Calibrated', value: calibratedCount, color: '#10b981' },
-    { name: 'Due Soon', value: dueSoonCount, color: '#f59e0b' },
-    { name: 'Overdue', value: overdueCount, color: '#f43f5e' },
-  ];
+  const statusPieData = totalCount === 0
+    ? [{ name: 'No Assets Registered', value: 1, color: '#e2e8f0' }]
+    : [
+        { name: 'Calibrated', value: calibratedCount, color: '#10b981' },
+        { name: 'Due Soon', value: dueSoonCount, color: '#f59e0b' },
+        { name: 'Overdue', value: overdueCount, color: '#f43f5e' },
+      ];
 
-  // Dynamic department compliance chart based on available equipment
-  const departmentChartData = [
-    { name: 'Analytical Chem', calibrated: Math.max(1, Math.round(calibratedCount * 0.35)), pending: Math.max(0, Math.round(dueSoonCount * 0.4)) },
-    { name: 'Quality Control', calibrated: Math.max(1, Math.round(calibratedCount * 0.25)), pending: Math.max(0, Math.round(overdueCount * 0.5)) },
-    { name: 'Bioassay', calibrated: Math.max(1, Math.round(calibratedCount * 0.2)), pending: Math.max(0, Math.round(dueSoonCount * 0.3)) },
-    { name: 'Microbiology', calibrated: Math.max(1, Math.round(calibratedCount * 0.15)), pending: Math.max(0, Math.round(overdueCount * 0.3)) },
-    { name: 'R&D Formulation', calibrated: Math.max(1, Math.round(calibratedCount * 0.15)), pending: 0 },
-  ];
+  // Department compliance chart: 0 values when no equipment registered
+  const departmentChartData = totalCount === 0
+    ? [
+        { name: 'Analytical Chem', calibrated: 0, pending: 0 },
+        { name: 'Quality Control', calibrated: 0, pending: 0 },
+        { name: 'Bioassay', calibrated: 0, pending: 0 },
+        { name: 'Microbiology', calibrated: 0, pending: 0 },
+        { name: 'R&D Formulation', calibrated: 0, pending: 0 },
+      ]
+    : [
+        { name: 'Analytical Chem', calibrated: Math.round(calibratedCount * 0.35), pending: Math.round(dueSoonCount * 0.4) },
+        { name: 'Quality Control', calibrated: Math.round(calibratedCount * 0.25), pending: Math.round(overdueCount * 0.5) },
+        { name: 'Bioassay', calibrated: Math.round(calibratedCount * 0.2), pending: Math.round(dueSoonCount * 0.3) },
+        { name: 'Microbiology', calibrated: Math.round(calibratedCount * 0.15), pending: Math.round(overdueCount * 0.3) },
+        { name: 'R&D Formulation', calibrated: Math.round(calibratedCount * 0.15), pending: 0 },
+      ];
 
-  // Upcoming items from real backend summary or equipment list
-  const upcomingEquipment: Equipment[] = summary && summary.upcomingCalibrations && summary.upcomingCalibrations.length > 0
+  // Upcoming items from real backend summary or equipment list (strictly empty when totalCount is 0)
+  const upcomingEquipment: Equipment[] = totalCount === 0
+    ? []
+    : summary && summary.upcomingCalibrations && summary.upcomingCalibrations.length > 0
     ? summary.upcomingCalibrations.map((u) => {
         const found = initialEquipmentList.find((e) => e.id === u.equipmentId || e.code === u.equipmentCode);
         if (found) {
@@ -105,11 +117,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         return mapBackendEquipmentToFrontend(u);
       })
     : [...initialEquipmentList]
+        .filter((e) => e.status === 'due_soon' || e.status === 'overdue')
         .sort((a, b) => a.daysRemaining - b.daysRemaining)
         .slice(0, 6);
 
-  // Recent activity: map from backend recent calibrations if available
-  const recentActivitiesList: RecentActivity[] = summary && summary.recentCalibrationRecords && summary.recentCalibrationRecords.length > 0
+  // Recent activity: map from backend recent calibrations (strictly empty when totalCount is 0)
+  const recentActivitiesList: RecentActivity[] = totalCount === 0
+    ? []
+    : summary && summary.recentCalibrationRecords && summary.recentCalibrationRecords.length > 0
     ? summary.recentCalibrationRecords.map((r: any) => ({
         id: String(r.id),
         type: 'calibration_completed',
@@ -370,60 +385,73 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {upcomingEquipment.map((eq) => (
-                  <tr
-                    key={eq.id}
-                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                    onClick={() => onNavigate(`/equipment/${eq.id}`)}
-                  >
-                    <td className="py-3 px-4">
-                      <div>
-                        <p className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
-                          {eq.name}
-                        </p>
-                        <p className="font-mono text-[11px] text-slate-500 mt-0.5">{eq.code}</p>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 hidden sm:table-cell">
-                      {eq.category}
-                    </td>
-                    <td className="py-3 px-4 font-medium text-slate-700">
-                      {eq.nextCalibrationDate}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`font-semibold ${
-                          eq.daysRemaining < 0
-                            ? 'text-rose-600'
-                            : eq.daysRemaining <= 14
-                            ? 'text-amber-600'
-                            : 'text-slate-700'
-                        }`}
-                      >
-                        {eq.daysRemaining < 0
-                          ? `${Math.abs(eq.daysRemaining)} days overdue`
-                          : eq.daysRemaining === 0
-                          ? 'Today'
-                          : `${eq.daysRemaining} days`}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <StatusBadge status={eq.status} size="sm" />
-                    </td>
-                    <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant={eq.status === 'overdue' ? 'danger' : 'outline'}
-                        size="xs"
-                        onClick={() => {
-                          if (onOpenCalibrateModal) onOpenCalibrateModal(eq);
-                          else onNavigate(`/equipment/${eq.id}`);
-                        }}
-                      >
-                        Calibrate
-                      </Button>
+                {upcomingEquipment.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center text-slate-400">
+                      <p className="font-semibold text-slate-700 text-xs">No upcoming calibrations scheduled</p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {totalCount === 0
+                          ? 'Register your first lab equipment item to track calibration schedules.'
+                          : 'All assets are compliant with current calibration schedules.'}
+                      </p>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  upcomingEquipment.map((eq) => (
+                    <tr
+                      key={eq.id}
+                      className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                      onClick={() => onNavigate(`/equipment/${eq.id}`)}
+                    >
+                      <td className="py-3 px-4">
+                        <div>
+                          <p className="font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+                            {eq.name}
+                          </p>
+                          <p className="font-mono text-[11px] text-slate-500 mt-0.5">{eq.code}</p>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 hidden sm:table-cell">
+                        {eq.category}
+                      </td>
+                      <td className="py-3 px-4 font-medium text-slate-700">
+                        {eq.nextCalibrationDate}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`font-semibold ${
+                            eq.daysRemaining < 0
+                              ? 'text-rose-600'
+                              : eq.daysRemaining <= 14
+                              ? 'text-amber-600'
+                              : 'text-slate-700'
+                          }`}
+                        >
+                          {eq.daysRemaining < 0
+                            ? `${Math.abs(eq.daysRemaining)} days overdue`
+                            : eq.daysRemaining === 0
+                            ? 'Today'
+                            : `${eq.daysRemaining} days`}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <StatusBadge status={eq.status} size="sm" />
+                      </td>
+                      <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <Button
+                          variant={eq.status === 'overdue' ? 'danger' : 'outline'}
+                          size="xs"
+                          onClick={() => {
+                            if (onOpenCalibrateModal) onOpenCalibrateModal(eq);
+                            else onNavigate(`/equipment/${eq.id}`);
+                          }}
+                        >
+                          Calibrate
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -447,33 +475,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             }
           />
           <CardContent className="flex-1 p-4 space-y-4">
-            <div className="relative pl-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 space-y-4">
-              {recentActivitiesList.slice(0, 5).map((act) => {
-                let dotColor = 'bg-blue-500 ring-blue-100';
-                if (act.type === 'calibration_completed') dotColor = 'bg-emerald-500 ring-emerald-100';
-                if (act.type === 'status_changed') dotColor = 'bg-rose-500 ring-rose-100';
-                if (act.type === 'due_reminder') dotColor = 'bg-amber-500 ring-amber-100';
+            {recentActivitiesList.length === 0 ? (
+              <div className="py-10 text-center text-slate-400">
+                <p className="font-semibold text-slate-700 text-xs">No recent activity</p>
+                <p className="text-[11px] text-slate-400 mt-1">Equipment registrations and calibration certificates will appear here.</p>
+              </div>
+            ) : (
+              <div className="relative pl-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 space-y-4">
+                {recentActivitiesList.slice(0, 5).map((act) => {
+                  let dotColor = 'bg-blue-500 ring-blue-100';
+                  if (act.type === 'calibration_completed') dotColor = 'bg-emerald-500 ring-emerald-100';
+                  if (act.type === 'status_changed') dotColor = 'bg-rose-500 ring-rose-100';
+                  if (act.type === 'due_reminder') dotColor = 'bg-amber-500 ring-amber-100';
 
-                return (
-                  <div key={act.id} className="relative text-xs">
-                    <span
-                      className={`absolute -left-5 top-1 w-2.5 h-2.5 rounded-full ring-4 bg-white ${dotColor}`}
-                    />
-                    <div className="flex items-center justify-between">
-                      <p className="font-semibold text-slate-800">{act.title}</p>
-                      <span className="text-[10px] text-slate-400">{act.timestamp}</span>
+                  return (
+                    <div key={act.id} className="relative text-xs">
+                      <span
+                        className={`absolute -left-5 top-1 w-2.5 h-2.5 rounded-full ring-4 bg-white ${dotColor}`}
+                      />
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-slate-800">{act.title}</p>
+                        <span className="text-[10px] text-slate-400">{act.timestamp}</span>
+                      </div>
+                      <p className="text-slate-600 mt-0.5 leading-relaxed text-[11px]">
+                        {act.description}
+                      </p>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                        <span>By {act.actor}</span>
+                        {act.equipmentCode && <span>· {act.equipmentCode}</span>}
+                      </div>
                     </div>
-                    <p className="text-slate-600 mt-0.5 leading-relaxed text-[11px]">
-                      {act.description}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 font-mono">
-                      <span>By {act.actor}</span>
-                      {act.equipmentCode && <span>· {act.equipmentCode}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -34,11 +34,11 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => api.getStoredUser());
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
-  const [equipmentList, setEquipmentList] = useState<Equipment[]>(initialEquipmentList);
-  const [calibrationRecords, setCalibrationRecords] = useState<CalibrationRecord[]>(initialCalibrationRecords);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications);
-  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>(initialRecentActivities);
-  const [calendarEvents, setCalendarEvents] = useState(initialCalendarEvents);
+  // Initialize with empty arrays so empty databases correctly show 0 items
+  const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
+  const [calibrationRecords, setCalibrationRecords] = useState<CalibrationRecord[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [apiConnected, setApiConnected] = useState<boolean | null>(null);
 
   // Sync with backend API
@@ -50,27 +50,40 @@ export default function App() {
         api.fetchCalibrationRecords().catch(() => null),
       ]);
 
-      if (equipData && equipData.items && equipData.items.length > 0) {
+      if (equipData && Array.isArray(equipData.items)) {
         setEquipmentList(equipData.items);
         setApiConnected(true);
+      } else if (equipData === null) {
+        setApiConnected(false);
       }
 
-      if (notifsData && notifsData.items && notifsData.items.length > 0) {
+      if (notifsData && Array.isArray(notifsData.items)) {
         setNotifications(notifsData.items);
       }
 
-      if (calibData && calibData.length > 0) {
+      if (Array.isArray(calibData)) {
         setCalibrationRecords(calibData);
+        // Build recent activities dynamically from actual calibration records
+        const activities: RecentActivity[] = calibData.slice(0, 8).map((r: any) => ({
+          id: `ACT-${r.id}`,
+          type: 'calibration_completed',
+          title: 'Calibration Completed',
+          description: `${r.equipmentName || 'Instrument'} (${r.equipmentCode || 'EQ'}) calibrated by ${r.serviceProvider || r.technicianName}. Result: ${r.result}.`,
+          timestamp: r.calibrationDate || 'Recently',
+          actor: r.technicianName || 'Technician',
+          equipmentCode: r.equipmentCode,
+        }));
+        setRecentActivities(activities);
       }
     } catch (err) {
-      console.warn('[CalibTrack] Using client fallback data state:', err);
+      console.warn('[CalibTrack] Using clean data state:', err);
       setApiConnected(false);
     }
   };
 
   useEffect(() => {
     loadBackendData();
-  }, []);
+  }, [currentUser]);
 
   // Listen for unauthorized 401 events & verify stored session
   useEffect(() => {
@@ -384,7 +397,7 @@ export default function App() {
 
     pageContent = (
       <CalendarPage
-        calendarEvents={liveCalendarEvents.length > 0 ? liveCalendarEvents : calendarEvents}
+        calendarEvents={liveCalendarEvents}
         onNavigate={navigate}
       />
     );

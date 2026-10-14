@@ -308,17 +308,35 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
             )}
 
             <FormField label="Laboratory Instrument" required>
-              <Select
-                value={newRecordForm.equipmentId}
-                onChange={(e) => setNewRecordForm({ ...newRecordForm, equipmentId: e.target.value })}
-                required
-              >
-                {equipmentList.map((eq) => (
-                  <option key={eq.id} value={eq.id}>
-                    {eq.code} - {eq.name} ({eq.department})
-                  </option>
-                ))}
-              </Select>
+              {equipmentList.length === 0 ? (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center justify-between">
+                  <span>No equipment registered in your laboratory yet.</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      onNavigate('/equipment/new');
+                    }}
+                  >
+                    + Add Equipment First
+                  </Button>
+                </div>
+              ) : (
+                <Select
+                  value={newRecordForm.equipmentId}
+                  onChange={(e) => setNewRecordForm({ ...newRecordForm, equipmentId: e.target.value })}
+                  required
+                >
+                  <option value="">Select an instrument...</option>
+                  {equipmentList.map((eq) => (
+                    <option key={eq.id} value={eq.id}>
+                      {eq.code} - {eq.name} ({eq.department})
+                    </option>
+                  ))}
+                </Select>
+              )}
             </FormField>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
