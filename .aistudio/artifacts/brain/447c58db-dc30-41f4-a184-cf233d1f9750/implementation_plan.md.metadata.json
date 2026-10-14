@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan for calibration log success modal and navigation workflow:\n1. Create a dedicated CalibrationSuccessModal component displaying instrument details, certificate number, verification date, next due date, outcome status, and an action button to proceed to the Calibration page.\n2. Integrate success modal into the global Quick Calibrate workflow in App.tsx so logging from Equipment Details (and Equipment List) displays the success dialog and navigates to /calibration when clicking the action button.\n3. Update CalibrationPage.tsx to display the success confirmation dialog upon creating a calibration record with instrument details.",
-  "updatedAt": "2026-10-14T10:23:34.908261222Z",
+  "summary": "Implementation plan to update Calibration Management by replacing legacy scheduling tabs (Due Soon, Overdue, Completed) with calibration outcome result tabs (All, Passed, Passed with Adjustment, Failed), introducing top summary metric cards for each calibration outcome, and adding quantitative count badges to each filter tab.",
+  "updatedAt": "2026-10-14T12:16:16.347989335Z",
   "requestFeedback": true,
   "userFacing": true
 }

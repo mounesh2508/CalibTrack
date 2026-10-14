@@ -644,6 +644,23 @@ export const initialCalibrationRecords: CalibrationRecord[] = [
     remarks: 'Deuterium and Tungsten lamp intensities checked. Annual cycle expired on Sept 15, 2026.',
     status: 'Overdue',
   },
+  {
+    id: 'REC-2026-033',
+    equipmentId: 'EQ-007',
+    equipmentCode: 'EQ-2024-007',
+    equipmentName: 'Precision Top-Loading Balance',
+    calibrationDate: '2026-04-18',
+    nextDueDate: '2026-10-18',
+    serviceProvider: 'Metrology Global Solutions ISO 17025',
+    technicianName: 'Alan Croft, Senior Metrologist',
+    certificateNumber: 'CERT-CAL-2026-3012',
+    result: 'Failed',
+    standardUsed: 'OIML Class F1 Mass Standards',
+    environmentalTemp: '20.5 °C',
+    environmentalHumidity: '47 % RH',
+    remarks: 'Corner load deviation exceeded ±0.05 g tolerance limit. Transducer drift detected. Instrument quarantined pending sensor replacement.',
+    status: 'Completed',
+  },
 ];
 
 export const initialNotifications: NotificationItem[] = [

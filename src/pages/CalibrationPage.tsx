@@ -12,6 +12,7 @@ import {
   Download,
   RefreshCw,
   AlertCircle,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -20,6 +21,8 @@ import { FormField, Input, Select, Textarea } from '../components/common/FormFie
 import { CalibrationSuccessModal } from '../components/common/CalibrationSuccessModal';
 import { Equipment, CalibrationRecord } from '../types';
 import { api } from '../services/api';
+
+export type CalibrationOutcomeTab = 'All' | 'Passed' | 'Passed with Adjustment' | 'Failed';
 
 interface CalibrationPageProps {
   equipmentList: Equipment[];
@@ -37,7 +40,7 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
   onNavigate,
   onRefreshRecords,
 }) => {
-  const [activeTab, setActiveTab] = useState<'All' | 'Upcoming' | 'Due Soon' | 'Overdue' | 'Completed'>('All');
+  const [activeTab, setActiveTab] = useState<CalibrationOutcomeTab>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [viewRecord, setViewRecord] = useState<CalibrationRecord | null>(null);
@@ -64,32 +67,47 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
     remarks: 'Routine calibration verified. Linearity, repeatability, and hysteresis within specifications.',
   });
 
-  // Filtered records
+  // Compute outcome counts & summary statistics
+  const counts = useMemo(() => {
+    const all = calibrationRecords.length;
+    const passed = calibrationRecords.filter((r) => r.result === 'Passed').length;
+    const passedWithAdjustment = calibrationRecords.filter(
+      (r) => r.result === 'Passed with Adjustment'
+    ).length;
+    const failed = calibrationRecords.filter((r) => r.result === 'Failed').length;
+
+    return {
+      all,
+      passed,
+      passedWithAdjustment,
+      failed,
+      passRate: all > 0 ? Math.round((passed / all) * 100) : 0,
+      adjustRate: all > 0 ? Math.round((passedWithAdjustment / all) * 100) : 0,
+      failRate: all > 0 ? Math.round((failed / all) * 100) : 0,
+    };
+  }, [calibrationRecords]);
+
+  // Filtered records by empirical calibration outcome and search query
   const filteredRecords = useMemo(() => {
     return calibrationRecords.filter((rec) => {
-      // Tab filter
-      if (activeTab === 'Completed' && rec.status !== 'Completed') return false;
-      if (activeTab === 'Overdue' && rec.status !== 'Overdue') return false;
-      if (activeTab === 'Upcoming' && rec.status !== 'Scheduled' && rec.status !== 'In Progress') {
-        const isFuture = new Date(rec.nextDueDate) >= new Date();
-        if (!isFuture) return false;
-      }
-      if (activeTab === 'Due Soon') {
-        const eq = equipmentList.find((e) => e.id === rec.equipmentId);
-        if (eq && eq.status !== 'due_soon') return false;
-      }
+      // Tab filter strictly by outcome result
+      if (activeTab === 'Passed' && rec.result !== 'Passed') return false;
+      if (activeTab === 'Passed with Adjustment' && rec.result !== 'Passed with Adjustment') return false;
+      if (activeTab === 'Failed' && rec.result !== 'Failed') return false;
 
       // Search filter
+      const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
-        searchQuery === '' ||
-        rec.equipmentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        rec.equipmentCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        rec.serviceProvider.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        rec.certificateNumber.toLowerCase().includes(searchQuery.toLowerCase());
+        q === '' ||
+        rec.equipmentName.toLowerCase().includes(q) ||
+        rec.equipmentCode.toLowerCase().includes(q) ||
+        rec.serviceProvider.toLowerCase().includes(q) ||
+        rec.certificateNumber.toLowerCase().includes(q) ||
+        (rec.technicianName && rec.technicianName.toLowerCase().includes(q));
 
       return matchesSearch;
     });
-  }, [calibrationRecords, equipmentList, activeTab, searchQuery]);
+  }, [calibrationRecords, activeTab, searchQuery]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -220,29 +238,173 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
         </div>
       </div>
 
-      {/* Tabs and Search Bar */}
+      {/* Top Summary Metric Cards for Calibration Outcomes */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Logged Audits */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('All')}
+          className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+            activeTab === 'All'
+              ? 'bg-white border-blue-500 ring-2 ring-blue-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Total Audits
+            </span>
+            <div className={`p-2 rounded-lg ${activeTab === 'All' ? 'bg-blue-50 text-blue-600' : 'bg-slate-100 text-slate-600'}`}>
+              <FileCheck2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tracking-tight text-slate-900">
+              {counts.all}
+            </span>
+            <span className="text-[11px] font-medium text-slate-500">
+              100% verified logs
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Complete calibration audit history
+          </p>
+        </button>
+
+        {/* Passed */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('Passed')}
+          className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+            activeTab === 'Passed'
+              ? 'bg-emerald-50/40 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-emerald-300 hover:shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wider">
+              Passed
+            </span>
+            <div className="p-2 rounded-lg bg-emerald-100/80 text-emerald-700">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tracking-tight text-emerald-700">
+              {counts.passed}
+            </span>
+            <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-100/60 px-1.5 py-0.5 rounded">
+              {counts.passRate}%
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Within manufacturer & ISO tolerances
+          </p>
+        </button>
+
+        {/* Passed with Adjustment */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('Passed with Adjustment')}
+          className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+            activeTab === 'Passed with Adjustment'
+              ? 'bg-amber-50/40 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-amber-800 uppercase tracking-wider">
+              Passed with Adjustment
+            </span>
+            <div className="p-2 rounded-lg bg-amber-100/80 text-amber-700">
+              <SlidersHorizontal className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tracking-tight text-amber-700">
+              {counts.passedWithAdjustment}
+            </span>
+            <span className="text-[11px] font-semibold text-amber-700 bg-amber-100/60 px-1.5 py-0.5 rounded">
+              {counts.adjustRate}%
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Zero-point offset / span compensated
+          </p>
+        </button>
+
+        {/* Failed */}
+        <button
+          type="button"
+          onClick={() => setActiveTab('Failed')}
+          className={`text-left p-4 rounded-xl border transition-all cursor-pointer ${
+            activeTab === 'Failed'
+              ? 'bg-rose-50/40 border-rose-500 ring-2 ring-rose-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-rose-300 hover:shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-rose-800 uppercase tracking-wider">
+              Failed
+            </span>
+            <div className="p-2 rounded-lg bg-rose-100/80 text-rose-700">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl font-bold font-mono tracking-tight text-rose-700">
+              {counts.failed}
+            </span>
+            <span className="text-[11px] font-semibold text-rose-700 bg-rose-100/60 px-1.5 py-0.5 rounded">
+              {counts.failRate}%
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Quarantine required & out-of-tolerance
+          </p>
+        </button>
+      </div>
+
+      {/* Outcome Tabs and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl overflow-x-auto text-xs font-medium">
-          {(['All', 'Completed', 'Due Soon', 'Overdue'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors ${
-                activeTab === tab
-                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl overflow-x-auto text-xs font-medium border border-slate-200/60">
+          {(
+            [
+              { key: 'All', label: 'All Records', count: counts.all, badgeClass: 'bg-slate-200 text-slate-800' },
+              { key: 'Passed', label: 'Passed', count: counts.passed, badgeClass: 'bg-emerald-100 text-emerald-800' },
+              { key: 'Passed with Adjustment', label: 'Passed with Adjustment', count: counts.passedWithAdjustment, badgeClass: 'bg-amber-100 text-amber-800' },
+              { key: 'Failed', label: 'Failed', count: counts.failed, badgeClass: 'bg-rose-100 text-rose-800' },
+            ] as const
+          ).map((tab) => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all flex items-center gap-2 ${
+                  isActive
+                    ? 'bg-white text-slate-900 font-semibold shadow-xs border border-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`px-1.5 py-0.2 rounded-full font-mono text-[11px] font-semibold transition-colors ${
+                    isActive ? tab.badgeClass : 'bg-slate-200/70 text-slate-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="relative w-full sm:w-72">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search records by cert # or name..."
+            placeholder="Search records by cert #, code or name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -269,12 +431,32 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
               {filteredRecords.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
-                    <p className="font-semibold text-slate-700 text-xs">No calibration records logged</p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {equipmentList.length === 0
-                        ? 'Register laboratory equipment first to schedule or log calibration certificates.'
-                        : 'No calibration records found matching current criteria.'}
+                    <p className="font-semibold text-slate-700 text-xs">
+                      {calibrationRecords.length === 0
+                        ? 'No calibration records logged'
+                        : `No "${activeTab}" calibration records found`}
                     </p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      {calibrationRecords.length === 0
+                        ? 'Register laboratory equipment first to schedule or log calibration certificates.'
+                        : searchQuery
+                        ? `No records matching "${searchQuery}" under ${activeTab} outcome.`
+                        : `No records currently categorized with "${activeTab}" outcome.`}
+                    </p>
+                    {activeTab !== 'All' && (
+                      <div className="mt-3">
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() => {
+                            setActiveTab('All');
+                            setSearchQuery('');
+                          }}
+                        >
+                          View All Records
+                        </Button>
+                      </div>
+                    )}
                     {equipmentList.length === 0 && (
                       <div className="mt-3">
                         <Button
@@ -313,14 +495,23 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
                     </td>
                     <td className="py-3.5 px-4">
                       <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-semibold ${
                           rec.result === 'Passed'
                             ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                             : rec.result === 'Passed with Adjustment'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
                             : 'bg-rose-50 text-rose-700 border border-rose-200'
                         }`}
                       >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            rec.result === 'Passed'
+                              ? 'bg-emerald-500'
+                              : rec.result === 'Passed with Adjustment'
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'
+                          }`}
+                        />
                         {rec.result}
                       </span>
                     </td>
@@ -509,7 +700,24 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
             <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
               <div className="flex justify-between items-center pb-2 border-b border-slate-200">
                 <span className="font-bold text-slate-800">ISO/IEC 17025 Certificate Details</span>
-                <span className="text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                <span
+                  className={`inline-flex items-center gap-1.5 font-semibold px-2.5 py-0.5 rounded text-[11px] border ${
+                    viewRecord.result === 'Passed'
+                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                      : viewRecord.result === 'Passed with Adjustment'
+                      ? 'text-amber-700 bg-amber-50 border-amber-200'
+                      : 'text-rose-700 bg-rose-50 border-rose-200'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      viewRecord.result === 'Passed'
+                        ? 'bg-emerald-500'
+                        : viewRecord.result === 'Passed with Adjustment'
+                        ? 'bg-amber-500'
+                        : 'bg-rose-500'
+                    }`}
+                  />
                   {viewRecord.result}
                 </span>
               </div>
