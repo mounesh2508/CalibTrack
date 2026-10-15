@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to update Calibration Management by replacing legacy scheduling tabs (Due Soon, Overdue, Completed) with calibration outcome result tabs (All, Passed, Passed with Adjustment, Failed), introducing top summary metric cards for each calibration outcome, and adding quantitative count badges to each filter tab.",
-  "updatedAt": "2026-10-14T12:16:16.347989335Z",
+  "summary": "Implementation plan for email OTP verification on staff registration and forgot password password reset flow with Gmail API dispatch and in-app test preview.",
+  "updatedAt": "2026-10-15T03:40:42.201967666Z",
   "requestFeedback": true,
   "userFacing": true
 }
