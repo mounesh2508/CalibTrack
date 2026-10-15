@@ -129,10 +129,27 @@ export function mapBackendEquipmentToFrontend(item: any): Equipment {
   const intervalDays = item.calibration_interval_days || item.calibrationIntervalDays || 180;
   const intervalMonths = Math.max(1, Math.round(intervalDays / 30));
 
+  const rawId =
+    item.id ||
+    item.equipmentId ||
+    item.equipment_id ||
+    item.equipmentCode ||
+    item.equipment_code ||
+    item.code;
+  const resolvedId = String(rawId || `EQ-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`);
+
+  const resolvedCode =
+    item.equipment_code ||
+    item.equipmentCode ||
+    item.code ||
+    (rawId ? String(rawId) : 'EQ-UNKNOWN');
+
+  const resolvedName = item.name || item.equipmentName || 'Unnamed Instrument';
+
   return {
-    id: String(item.id || item.equipment_code || item.code),
-    code: item.equipment_code || item.code || 'EQ-UNKNOWN',
-    name: item.name || 'Unnamed Instrument',
+    id: resolvedId,
+    code: resolvedCode,
+    name: resolvedName,
     category: (item.category as Equipment['category']) || 'Balances & Scales',
     manufacturer: item.manufacturer || 'Standard Lab Equipment',
     model: item.model_number || item.model || 'Model Standard',
@@ -193,16 +210,24 @@ export function mapBackendDashboardSummary(data: any): ApiDashboardSummary {
     calibratedCount: data.calibrated_count ?? data.calibratedCount ?? 0,
     dueSoonCount: data.due_soon_count ?? data.dueSoonCount ?? 0,
     overdueCount: data.overdue_count ?? data.overdueCount ?? 0,
-    upcomingCalibrations: (data.upcoming_calibrations || data.upcomingCalibrationRecords || []).map((u: any) => ({
-      equipmentId: u.equipment_id || u.equipmentId || '',
-      equipmentCode: u.equipment_code || u.equipmentCode || '',
-      name: u.name || u.equipmentName || '',
-      category: u.category || '',
-      nextCalibrationDate: u.next_calibration_date || u.nextCalibrationDate || null,
-      daysRemaining: u.days_remaining ?? u.daysRemaining ?? 0,
-      status: (u.status || 'CALIBRATED').toUpperCase(),
+    upcomingCalibrations: (data.upcoming_calibrations || data.upcomingCalibrationRecords || []).map((u: any, idx: number) => {
+      const equipId = u.equipment_id || u.equipmentId || `eq-up-${idx + 1}`;
+      const equipCode = u.equipment_code || u.equipmentCode || `EQ-UP-${idx + 1}`;
+      return {
+        id: u.id || equipId,
+        equipmentId: String(equipId),
+        equipmentCode: String(equipCode),
+        name: u.name || u.equipmentName || 'Laboratory Instrument',
+        category: u.category || 'General',
+        nextCalibrationDate: u.next_calibration_date || u.nextCalibrationDate || null,
+        daysRemaining: u.days_remaining ?? u.daysRemaining ?? 0,
+        status: (u.status || 'CALIBRATED').toUpperCase(),
+      };
+    }),
+    recentCalibrationRecords: (data.recent_calibration_activity || data.recentCalibrationRecords || []).map((r: any, idx: number) => ({
+      ...r,
+      id: r.id ? String(r.id) : `rec-act-${idx + 1}-${Date.now()}`,
     })),
-    recentCalibrationRecords: (data.recent_calibration_activity || data.recentCalibrationRecords || []),
   };
 }
 
@@ -293,15 +318,17 @@ export const api = {
       body: JSON.stringify({ email: email.trim(), password }),
     });
 
+    const userObj: AuthUser = {
+      id: res.user?.id || `usr-${Date.now()}`,
+      name: res.user?.name || email.split('@')[0],
+      email: res.user?.email || email.trim(),
+      role: res.user?.role || 'TECHNICIAN',
+      created_at: res.user?.created_at,
+    };
+
     const session: AuthSession = {
       token: res.access_token,
-      user: {
-        id: res.user.id,
-        name: res.user.name,
-        email: res.user.email,
-        role: res.user.role,
-        created_at: res.user.created_at,
-      },
+      user: userObj,
       expiresAt: res.expires_at,
     };
 
@@ -313,12 +340,13 @@ export const api = {
   async register(name: string, email: string, password: string): Promise<{
     message: string;
     is_email_verified: boolean;
-    user: AuthUser;
+    user?: AuthUser;
     simulation?: {
       mode: string;
       message: string;
-      verification_token: string;
-      verification_url: string;
+      verification_token?: string;
+      verification_url?: string;
+      otp_code?: string;
     } | null;
   }> {
     const res = await request<any>('/auth/register', {
@@ -330,16 +358,20 @@ export const api = {
       }),
     });
 
+    const userObj: AuthUser | undefined = res.user
+      ? {
+          id: res.user.id || '',
+          name: res.user.name || name.trim(),
+          email: res.user.email || email.trim(),
+          role: res.user.role || 'TECHNICIAN',
+          created_at: res.user.created_at,
+        }
+      : undefined;
+
     return {
-      message: res.message,
-      is_email_verified: res.is_email_verified,
-      user: {
-        id: res.user.id,
-        name: res.user.name,
-        email: res.user.email,
-        role: res.user.role,
-        created_at: res.user.created_at,
-      },
+      message: res.message || 'Staff registration code dispatched.',
+      is_email_verified: Boolean(res.is_email_verified),
+      user: userObj,
       simulation: res.simulation || null,
     };
   },
@@ -348,6 +380,92 @@ export const api = {
     return request<{ success: boolean; message: string; email: string }>('/auth/verify-email', {
       method: 'POST',
       body: JSON.stringify({ token: token.trim() }),
+    });
+  },
+
+  // 6-digit OTP Email Verification
+  async verifyCode(
+    email: string,
+    code: string,
+    type: 'REGISTRATION' | 'PASSWORD_RESET' = 'REGISTRATION'
+  ): Promise<{
+    success: boolean;
+    verified: boolean;
+    message: string;
+    email: string;
+    reset_token?: string;
+    user?: AuthUser;
+  }> {
+    return request<any>('/auth/verify-code', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: email.trim(),
+        code: code.trim(),
+        type,
+      }),
+    });
+  },
+
+  // Forgot Password - Send 6-digit OTP
+  async forgotPassword(email: string): Promise<{
+    success: boolean;
+    message: string;
+    email: string;
+    simulation?: {
+      otp_code: string;
+      expires_in_minutes: number;
+      mode: string;
+      recipient: string;
+    } | null;
+  }> {
+    return request<any>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.trim() }),
+    });
+  },
+
+  // Reset Password with Verified Token/Code
+  async resetPassword(payload: {
+    email: string;
+    new_password: string;
+    reset_token?: string;
+    code?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    email?: string;
+  }> {
+    return request<any>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: payload.email.trim(),
+        new_password: payload.new_password,
+        reset_token: payload.reset_token,
+        code: payload.code,
+      }),
+    });
+  },
+
+  // Resend 6-digit OTP Code
+  async resendCode(
+    email: string,
+    type: 'REGISTRATION' | 'PASSWORD_RESET' = 'REGISTRATION'
+  ): Promise<{
+    success: boolean;
+    message: string;
+    simulation?: {
+      otp_code: string;
+      expires_in_minutes: number;
+      mode: string;
+      recipient: string;
+    } | null;
+  }> {
+    return request<any>('/auth/resend-code', {
+      method: 'POST',
+      body: JSON.stringify({
+        email: email.trim(),
+        type,
+      }),
     });
   },
 
@@ -360,6 +478,7 @@ export const api = {
       message: string;
       verification_token: string;
       verification_url: string;
+      otp_code?: string;
     } | null;
   }> {
     return request<any>('/auth/resend-verification', {
@@ -444,6 +563,33 @@ export const api = {
     return mapBackendEquipmentToFrontend(data);
   },
 
+  async bulkImportEquipment(items: any[]): Promise<{
+    success: boolean;
+    totalProcessed: number;
+    importedCount: number;
+    skippedCount: number;
+    createdItems: Equipment[];
+    skippedItems: Array<{ equipment_code: string; name: string; reason: string }>;
+  }> {
+    const raw = await request<any>('/equipment/bulk-import', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    });
+    const result = raw.data || raw;
+    const createdItems = Array.isArray(result.createdItems)
+      ? result.createdItems.map(mapBackendEquipmentToFrontend)
+      : [];
+
+    return {
+      success: !!result.success,
+      totalProcessed: result.totalProcessed || 0,
+      importedCount: result.importedCount || createdItems.length,
+      skippedCount: result.skippedCount || 0,
+      createdItems,
+      skippedItems: result.skippedItems || [],
+    };
+  },
+
   async updateEquipment(id: string, updates: Partial<EquipmentApiPayload>): Promise<Equipment> {
     const raw = await request<any>(`/equipment/${encodeURIComponent(id)}`, {
       method: 'PUT',
@@ -498,7 +644,7 @@ export const api = {
       id: String(n.id),
       title: n.title,
       description: n.message,
-      timestamp: 'Recently',
+      timestamp: n.created_at ? new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently',
       category:
         n.type === 'CALIBRATION_OVERDUE'
           ? 'alert'
@@ -509,6 +655,20 @@ export const api = {
           : 'system',
       read: Boolean(n.is_read),
       equipmentId: n.equipment_id || undefined,
+      equipmentCode: n.email_details?.equipment_code || undefined,
+      emailDetails: n.email_details ? {
+        subject: n.email_details.subject,
+        recipients: n.email_details.recipients || [],
+        sender: n.email_details.sender || 'CalibTrack Metrology Services <notifications@calibtrack.lab>',
+        dispatchedAt: n.email_details.dispatched_at || n.email_details.dispatchedAt || n.created_at || new Date().toISOString(),
+        status: n.email_details.status || 'DELIVERED',
+        htmlBody: n.email_details.html_body || n.email_details.htmlBody || '',
+        equipmentCode: n.email_details.equipment_code || n.email_details.equipmentCode,
+        equipmentName: n.email_details.equipment_name || n.email_details.equipmentName,
+        urgency: n.email_details.urgency || (n.type === 'CALIBRATION_OVERDUE' ? 'OVERDUE' : 'DUE_SOON'),
+        daysRemaining: n.email_details.days_remaining ?? n.email_details.daysRemaining ?? 0,
+        dueDate: n.email_details.due_date || n.email_details.dueDate || '',
+      } : undefined,
     }));
 
     return {
@@ -534,7 +694,7 @@ export const api = {
     }
   },
 
-  // Reminder Settings
+  // Reminder Settings & Gmail Calibration Alert Dispatch
   async fetchReminderSettings(): Promise<{
     reminder_days_before: number;
     email_enabled: boolean;
@@ -559,5 +719,51 @@ export const api = {
     return request<any>('/reminders/trigger', {
       method: 'POST',
     });
+  },
+
+  async triggerCalibrationAlertEmails(): Promise<{
+    success: boolean;
+    evaluatedCount: number;
+    dispatchedEmailsCount: number;
+    dueSoonCount: number;
+    overdueCount: number;
+    recipientsCount: number;
+    dispatchedAlerts: Array<{
+      equipmentId: string;
+      equipmentCode: string;
+      equipmentName: string;
+      status: 'DUE_SOON' | 'OVERDUE';
+      daysRemaining: number;
+      dueDate: string;
+      recipients: string[];
+      subject: string;
+      htmlBody: string;
+      dispatchedAt: string;
+    }>;
+  }> {
+    return request<any>('/reminders/trigger', {
+      method: 'POST',
+    });
+  },
+
+  async fetchDueRemindersPreview(): Promise<{
+    success: boolean;
+    count: number;
+    dueSoonCount: number;
+    overdueCount: number;
+    items: Array<{
+      id: string;
+      code: string;
+      name: string;
+      department: string;
+      location: string;
+      dueDate: string;
+      daysRemaining: number;
+      isOverdue: boolean;
+      isDueSoon: boolean;
+      status: string;
+    }>;
+  }> {
+    return request<any>('/reminders/preview-due');
   },
 };

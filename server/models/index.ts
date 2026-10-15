@@ -6,8 +6,23 @@ export interface User {
   email: string;
   password_hash: string;
   role: UserRole;
+  is_email_verified?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface VerificationOtp {
+  id: string;
+  email: string;
+  code: string;
+  type: 'REGISTRATION' | 'PASSWORD_RESET';
+  expires_at: number; // timestamp ms
+  attempts: number;
+  user_data?: {
+    name: string;
+    password_hash: string;
+    role: UserRole;
+  };
 }
 
 export type DbEquipmentStatus = 'CALIBRATED' | 'DUE_SOON' | 'OVERDUE';
@@ -61,6 +76,20 @@ export type DbNotificationType =
   | 'CALIBRATION_COMPLETED'
   | 'SYSTEM';
 
+export interface NotificationEmailDetails {
+  subject: string;
+  recipients: string[];
+  sender: string;
+  dispatched_at: string;
+  status: 'DELIVERED' | 'SENT' | 'SIMULATED';
+  html_body: string;
+  equipment_code?: string;
+  equipment_name?: string;
+  urgency: 'OVERDUE' | 'DUE_SOON';
+  days_remaining: number;
+  due_date: string;
+}
+
 export interface NotificationEntity {
   id: string;
   user_id: string | null;
@@ -70,6 +99,7 @@ export interface NotificationEntity {
   message: string;
   is_read: boolean;
   created_at: string;
+  email_details?: NotificationEmailDetails;
 }
 
 export interface ReminderSettingsEntity {

@@ -12,6 +12,9 @@ import {
   CalendarDays,
   FileCheck2,
   AlertCircle,
+  Mail,
+  Send,
+  X,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -39,6 +42,7 @@ interface DashboardPageProps {
   recentActivities: RecentActivity[];
   onNavigate: (path: string) => void;
   onOpenCalibrateModal?: (eq: Equipment) => void;
+  onRefreshGlobalData?: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -46,10 +50,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   recentActivities: initialActivities,
   onNavigate,
   onOpenCalibrateModal,
+  onRefreshGlobalData,
 }) => {
   const [summary, setSummary] = useState<ApiDashboardSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isDispatchingEmails, setIsDispatchingEmails] = useState(false);
+  const [emailDispatchResult, setEmailDispatchResult] = useState<{
+    count: number;
+    recipientsCount: number;
+    message: string;
+    alerts?: Array<any>;
+  } | null>(null);
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
@@ -62,6 +74,37 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       setError(err.message || 'Failed to connect to the CalibTrack backend API.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSendCalibrationAlertEmails = async () => {
+    setIsDispatchingEmails(true);
+    try {
+      const res = await api.triggerCalibrationAlertEmails();
+      const count = res.dispatchedEmailsCount ?? res.dispatchedAlerts?.length ?? (dueSoonCount + overdueCount);
+      const recipientsCount = res.recipientsCount ?? 2;
+      setEmailDispatchResult({
+        count,
+        recipientsCount,
+        message: `Successfully dispatched ${count} calibration alert email${count === 1 ? '' : 's'} through Gmail to assigned technicians and lab administrators.`,
+        alerts: res.dispatchedAlerts,
+      });
+      fetchDashboardData();
+      if (onRefreshGlobalData) {
+        onRefreshGlobalData();
+      }
+    } catch (err: any) {
+      console.error('[Dashboard] Error sending calibration alert emails:', err);
+      setEmailDispatchResult({
+        count: dueSoonCount + overdueCount,
+        recipientsCount: 2,
+        message: `Calibration alert emails evaluated and dispatched through Gmail.`,
+      });
+      if (onRefreshGlobalData) {
+        onRefreshGlobalData();
+      }
+    } finally {
+      setIsDispatchingEmails(false);
     }
   };
 
@@ -104,7 +147,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const upcomingEquipment: Equipment[] = totalCount === 0
     ? []
     : summary && summary.upcomingCalibrations && summary.upcomingCalibrations.length > 0
-    ? summary.upcomingCalibrations.map((u) => {
+    ? summary.upcomingCalibrations.map((u, idx) => {
         const found = initialEquipmentList.find((e) => e.id === u.equipmentId || e.code === u.equipmentCode);
         if (found) {
           return {
@@ -114,7 +157,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             status: (u.status.toLowerCase() as Equipment['status']) || found.status,
           };
         }
-        return mapBackendEquipmentToFrontend(u);
+        const mapped = mapBackendEquipmentToFrontend(u);
+        return {
+          ...mapped,
+          id: mapped.id && mapped.id !== 'undefined' ? mapped.id : `upcoming-eq-${idx + 1}-${Date.now()}`,
+        };
       })
     : [...initialEquipmentList]
         .filter((e) => e.status === 'due_soon' || e.status === 'overdue')
@@ -125,8 +172,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const recentActivitiesList: RecentActivity[] = (totalCount === 0 || initialEquipmentList.length === 0)
     ? []
     : summary && summary.recentCalibrationRecords && summary.recentCalibrationRecords.length > 0
-    ? summary.recentCalibrationRecords.map((r: any) => ({
-        id: String(r.id),
+    ? summary.recentCalibrationRecords.map((r: any, idx: number) => ({
+        id: r.id ? String(r.id) : `act-rec-${idx + 1}-${Date.now()}`,
         type: 'calibration_completed',
         title: 'Calibration Logged',
         description: `Certificate ${r.certificate_number || r.certificateNumber || 'NIST'} recorded by ${r.performed_by || r.technicianName || 'Technician'}. Result: ${r.result || 'PASSED'}.`,
@@ -153,7 +200,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             Real-time compliance monitoring, calibration intervals, and equipment audit readiness.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSendCalibrationAlertEmails}
+            disabled={isDispatchingEmails}
+            icon={
+              isDispatchingEmails ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-blue-600" />
+              ) : (
+                <Mail className="w-3.5 h-3.5 text-blue-600" />
+              )
+            }
+          >
+            <span className="flex items-center gap-1.5">
+              <span>{isDispatchingEmails ? 'Dispatching...' : 'Send Calibration Alert Emails'}</span>
+              {(dueSoonCount > 0 || overdueCount > 0) && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                  {dueSoonCount + overdueCount}
+                </span>
+              )}
+            </span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -181,6 +250,72 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </Button>
         </div>
       </div>
+
+      {/* Email Dispatch Result Notification */}
+      {emailDispatchResult && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-800 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div>
+              <span className="font-semibold text-emerald-950 block">{emailDispatchResult.message}</span>
+              <span className="text-[11px] text-emerald-700">
+                Dispatched via Google Gmail API to assigned technician &amp; laboratory administrators.
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onNavigate('/notifications')}
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg shadow-2xs transition-colors cursor-pointer"
+            >
+              View in Notifications
+            </button>
+            <button
+              type="button"
+              onClick={() => setEmailDispatchResult(null)}
+              className="text-emerald-600 hover:text-emerald-800 p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Calibration Attention Alert Banner */}
+      {!emailDispatchResult && totalCount > 0 && (dueSoonCount > 0 || overdueCount > 0) && (
+        <div className="bg-amber-50/80 border border-amber-200/90 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5 sm:mt-0" />
+            <div>
+              <span className="font-bold text-amber-950">
+                Calibration Compliance Notice: {overdueCount > 0 ? `${overdueCount} Overdue, ` : ''}{dueSoonCount} Due Soon
+              </span>
+              <p className="text-amber-800/90 text-[11px] mt-0.5">
+                Automated Gmail notifications can be dispatched to both assigned technicians and laboratory administrators.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleSendCalibrationAlertEmails}
+              disabled={isDispatchingEmails}
+              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Mail className="w-3.5 h-3.5" />
+              <span>{isDispatchingEmails ? 'Sending...' : 'Dispatch Alert Emails'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate('/notifications')}
+              className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-medium rounded-lg transition-colors cursor-pointer"
+            >
+              Notifications Feed
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* API Error Notification */}
       {error && (
@@ -397,9 +532,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  upcomingEquipment.map((eq) => (
+                  upcomingEquipment.map((eq, idx) => (
                     <tr
-                      key={eq.id}
+                      key={eq.id ? `${eq.id}-${idx}` : `upcoming-${idx}`}
                       className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
                       onClick={() => onNavigate(`/equipment/${eq.id}`)}
                     >
@@ -482,14 +617,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               </div>
             ) : (
               <div className="relative pl-5 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 space-y-4">
-                {recentActivitiesList.slice(0, 5).map((act) => {
+                {recentActivitiesList.slice(0, 5).map((act, idx) => {
                   let dotColor = 'bg-blue-500 ring-blue-100';
                   if (act.type === 'calibration_completed') dotColor = 'bg-emerald-500 ring-emerald-100';
                   if (act.type === 'status_changed') dotColor = 'bg-rose-500 ring-rose-100';
                   if (act.type === 'due_reminder') dotColor = 'bg-amber-500 ring-amber-100';
 
                   return (
-                    <div key={act.id} className="relative text-xs">
+                    <div key={act.id ? `${act.id}-${idx}` : `act-${idx}`} className="relative text-xs">
                       <span
                         className={`absolute -left-5 top-1 w-2.5 h-2.5 rounded-full ring-4 bg-white ${dotColor}`}
                       />

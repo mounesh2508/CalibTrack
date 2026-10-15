@@ -6,6 +6,7 @@ import {
   NotificationEntity,
   ReminderSettingsEntity,
   User,
+  VerificationOtp,
 } from '../models';
 
 dotenv.config();
@@ -34,6 +35,7 @@ class MemoryStore {
   calibrationRecords: CalibrationRecordEntity[] = [];
   notifications: NotificationEntity[] = [];
   reminderSettings: ReminderSettingsEntity[] = [];
+  otps: VerificationOtp[] = [];
 
   constructor() {
     this.seedDefaults();
@@ -44,9 +46,9 @@ class MemoryStore {
     this.users = [
       {
         id: 'usr-admin-01',
-        name: 'Dr. Sarah Lin',
-        email: 'sarah.lin@calibtrack.lab',
-        password_hash: '$2b$10$wT2829XQ1930mockAdminHashHere',
+        name: 'Mounesh A',
+        email: 'asokanmounesh@gmail.com',
+        password_hash: 'a.MOUNESH14',
         role: 'ADMIN',
         created_at: '2026-01-01T08:00:00Z',
         updated_at: '2026-01-01T08:00:00Z',

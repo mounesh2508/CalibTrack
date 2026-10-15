@@ -12,10 +12,13 @@ import {
   RefreshCw,
   Users,
   ShieldAlert,
+  Plus,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { FormField, Input, Select } from '../components/common/FormField';
+import { Modal } from '../components/common/Modal';
+import { OtpVerificationModal } from '../components/auth/OtpVerificationModal';
 import { AuthUser } from '../types';
 import { api } from '../services/api';
 
@@ -40,6 +43,39 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
   const [isLoadingStaff, setIsLoadingStaff] = useState(false);
   const [roleActionId, setRoleActionId] = useState<string | null>(null);
   const [roleNotice, setRoleNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // Register New Staff State & OTP Modal
+  const [isRegisterStaffOpen, setIsRegisterStaffOpen] = useState(false);
+  const [newStaffName, setNewStaffName] = useState('');
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [isRegisteringStaff, setIsRegisteringStaff] = useState(false);
+  const [registerStaffError, setRegisterStaffError] = useState<string | null>(null);
+
+  const [isStaffOtpOpen, setIsStaffOtpOpen] = useState(false);
+  const [staffOtpEmail, setStaffOtpEmail] = useState('');
+  const [staffSimulationCode, setStaffSimulationCode] = useState<string | null>(null);
+
+  const handleRegisterStaffSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaffName.trim() || !newStaffEmail.trim() || newStaffPassword.length < 8) {
+      setRegisterStaffError('Please provide a valid name, email, and at least 8-character password.');
+      return;
+    }
+    setIsRegisteringStaff(true);
+    setRegisterStaffError(null);
+    try {
+      const res = await api.register(newStaffName, newStaffEmail, newStaffPassword);
+      setStaffOtpEmail(newStaffEmail.trim());
+      setStaffSimulationCode(res.simulation?.otp_code || null);
+      setIsRegisterStaffOpen(false);
+      setIsStaffOtpOpen(true);
+    } catch (err: any) {
+      setRegisterStaffError(err.message || 'Failed to initiate staff registration.');
+    } finally {
+      setIsRegisteringStaff(false);
+    }
+  };
 
   // Load backend reminder settings
   useEffect(() => {
@@ -337,15 +373,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-xs text-slate-500 pb-2 border-b border-slate-100">
                 <span>Registered Staff Members ({staffList.length})</span>
-                <button
-                  type="button"
-                  onClick={loadStaff}
-                  disabled={isLoadingStaff}
-                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800 font-medium cursor-pointer"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStaff ? 'animate-spin' : ''}`} />
-                  <span>Refresh Staff</span>
-                </button>
+                <div className="flex items-center gap-2.5">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="xs"
+                    onClick={() => {
+                      setRegisterStaffError(null);
+                      setIsRegisterStaffOpen(true);
+                    }}
+                    icon={<Plus className="w-3.5 h-3.5" />}
+                  >
+                    + Register Staff
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={loadStaff}
+                    disabled={isLoadingStaff}
+                    className="flex items-center gap-1 text-slate-600 hover:text-slate-900 font-medium cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStaff ? 'animate-spin' : ''}`} />
+                    <span>Refresh</span>
+                  </button>
+                </div>
               </div>
 
               {isLoadingStaff ? (
@@ -354,13 +404,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
                 <div className="py-6 text-center text-xs text-slate-400">No staff members found.</div>
               ) : (
                 <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
-                  {staffList.map((staff) => {
+                  {staffList.map((staff, idx) => {
                     const isSelf = staff.id === currentUser?.id;
                     const isTargetAdmin = staff.role === 'ADMIN';
 
                     return (
                       <div
-                        key={staff.id}
+                        key={staff.id ? `${staff.id}-${idx}` : `staff-${idx}`}
                         className="p-3.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white hover:bg-slate-50/60 transition-colors"
                       >
                         <div className="min-w-0">
@@ -419,6 +469,102 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
           )}
         </CardContent>
       </Card>
+
+      {/* Admin Register Staff Modal */}
+      {isRegisterStaffOpen && (
+        <Modal
+          isOpen={true}
+          onClose={() => setIsRegisterStaffOpen(false)}
+          title="Register Laboratory Staff"
+        >
+          <form onSubmit={handleRegisterStaffSubmit} className="space-y-4 text-xs">
+            {registerStaffError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-800 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{registerStaffError}</span>
+              </div>
+            )}
+
+            <p className="text-slate-600 text-xs">
+              Registering new staff dispatches a secure 6-digit verification code to the employee's Gmail address to verify their email before account activation.
+            </p>
+
+            <FormField label="Full Staff Name" required>
+              <Input
+                type="text"
+                value={newStaffName}
+                onChange={(e) => setNewStaffName(e.target.value)}
+                placeholder="Dr. Alan Croft"
+                required
+              />
+            </FormField>
+
+            <FormField label="Staff Email Address" required>
+              <Input
+                type="email"
+                value={newStaffEmail}
+                onChange={(e) => setNewStaffEmail(e.target.value)}
+                placeholder="alan.croft@laboratory.com"
+                required
+              />
+            </FormField>
+
+            <FormField label="Temporary Password (min 8 chars)" required>
+              <Input
+                type="password"
+                value={newStaffPassword}
+                onChange={(e) => setNewStaffPassword(e.target.value)}
+                placeholder="Min 8 characters"
+                minLength={8}
+                required
+              />
+            </FormField>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-200">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRegisterStaffOpen(false)}
+                disabled={isRegisteringStaff}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                size="sm"
+                disabled={isRegisteringStaff}
+                icon={isRegisteringStaff ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : undefined}
+              >
+                {isRegisteringStaff ? 'Dispatching Code...' : 'Send Verification Code'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* OTP Verification Modal for Admin Registered Staff */}
+      {isStaffOtpOpen && (
+        <OtpVerificationModal
+          isOpen={true}
+          onClose={() => setIsStaffOtpOpen(false)}
+          email={staffOtpEmail}
+          type="REGISTRATION"
+          simulationCode={staffSimulationCode}
+          onSuccess={async () => {
+            setIsStaffOtpOpen(false);
+            setRoleNotice({
+              message: `Staff member ${staffOtpEmail} successfully verified and registered!`,
+              type: 'success',
+            });
+            await loadStaff();
+            setNewStaffName('');
+            setNewStaffEmail('');
+            setNewStaffPassword('');
+          }}
+        />
+      )}
     </div>
   );
 };

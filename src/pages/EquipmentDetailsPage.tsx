@@ -319,8 +319,8 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayHistory.map((rec) => (
-                    <tr key={rec.id} className="hover:bg-slate-50/60 transition-colors">
+                  {displayHistory.map((rec, idx) => (
+                    <tr key={rec.id ? `${rec.id}-${idx}` : `rec-${idx}`} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-3.5 px-4 font-medium text-slate-900">
                         {rec.calibrationDate}
                       </td>

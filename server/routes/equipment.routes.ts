@@ -10,6 +10,9 @@ router.get('/', equipmentController.getAll);
 // POST /api/equipment
 router.post('/', equipmentController.create);
 
+// POST /api/equipment/bulk-import
+router.post('/bulk-import', equipmentController.bulkImport);
+
 // GET /api/equipment/:id
 router.get('/:id', equipmentController.getById);
 

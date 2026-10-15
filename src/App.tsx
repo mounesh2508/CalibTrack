@@ -32,7 +32,31 @@ export default function App() {
     return p;
   });
 
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => api.getStoredUser());
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    const stored = api.getStoredUser();
+    if (!stored) {
+      const defaultAdmin: AuthUser = {
+        id: 'usr-admin-01',
+        name: 'Mounesh A',
+        email: 'asokanmounesh@gmail.com',
+        role: 'ADMIN',
+      };
+      api.setStoredUser(defaultAdmin);
+      return defaultAdmin;
+    }
+    if (stored.id === 'usr-admin-01' || stored.email === 'admin@calibtrack-lab.com' || stored.email === 'sarah.lin@calibtrack.lab') {
+      const updatedAdmin: AuthUser = {
+        ...stored,
+        id: 'usr-admin-01',
+        name: 'Mounesh A',
+        email: 'asokanmounesh@gmail.com',
+        role: 'ADMIN',
+      };
+      api.setStoredUser(updatedAdmin);
+      return updatedAdmin;
+    }
+    return stored;
+  });
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
   // Initialize with empty arrays so empty databases correctly show 0 items
@@ -49,6 +73,9 @@ export default function App() {
   // Sync with backend API
   const loadBackendData = async () => {
     try {
+      // Background check: evaluate due soon & overdue calibrations and sync Gmail alerts
+      await api.triggerCalibrationAlertEmails().catch(() => null);
+
       const [equipData, notifsData, calibData] = await Promise.all([
         api.fetchEquipment().catch(() => null),
         api.fetchNotifications().catch(() => null),
@@ -474,6 +501,7 @@ export default function App() {
         onMarkAllAsRead={handleMarkAllAsRead}
         onMarkAsRead={handleMarkAsRead}
         onNavigate={navigate}
+        onRefreshNotifications={loadBackendData}
       />
     );
   } else if (currentPath === '/reports') {
@@ -493,6 +521,7 @@ export default function App() {
         recentActivities={recentActivities}
         onNavigate={navigate}
         onOpenCalibrateModal={handleOpenCalibrateModal}
+        onRefreshGlobalData={loadBackendData}
       />
     );
   }

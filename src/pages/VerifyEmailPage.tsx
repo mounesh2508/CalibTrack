@@ -42,11 +42,18 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigate }) 
     setSuccessMessage(null);
 
     try {
-      const res = await api.verifyEmail(tokenToVerify);
-      setVerifiedEmail(res.email);
-      setSuccessMessage(res.message || 'Your email address has been verified successfully!');
+      const clean = tokenToVerify.trim();
+      if (/^\d{6}$/.test(clean) && (resendEmail.trim() || verifiedEmail)) {
+        const res = await api.verifyCode(resendEmail.trim() || (verifiedEmail as string), clean, 'REGISTRATION');
+        setVerifiedEmail(res.email);
+        setSuccessMessage(res.message || 'Your email address has been verified successfully!');
+      } else {
+        const res = await api.verifyEmail(clean);
+        setVerifiedEmail(res.email);
+        setSuccessMessage(res.message || 'Your email address has been verified successfully!');
+      }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Verification token is invalid or has expired.');
+      setErrorMessage(err.message || 'Verification code or token is invalid or has expired.');
     } finally {
       setIsVerifying(false);
     }
@@ -61,18 +68,14 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigate }) 
     setErrorMessage(null);
 
     try {
-      const res = await api.resendVerification(resendEmail);
-      if (res.already_verified) {
-        setResendNotice('This account is already verified. You can sign in directly.');
-      } else {
-        let msg = res.message || 'Verification email sent. Please check your inbox.';
-        if (res.simulation && res.simulation.verification_url) {
-          msg += ` (Dev Simulation: URL ready)`;
-        }
-        setResendNotice(msg);
+      const res = await api.resendCode(resendEmail.trim(), 'REGISTRATION');
+      let msg = res.message || 'Verification code sent. Please check your inbox.';
+      if (res.simulation && res.simulation.otp_code) {
+        msg += ` (Gmail Test Preview: ${res.simulation.otp_code})`;
       }
+      setResendNotice(msg);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to resend verification email.');
+      setErrorMessage(err.message || 'Failed to resend verification code.');
     } finally {
       setIsResending(false);
     }

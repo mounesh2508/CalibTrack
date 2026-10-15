@@ -472,8 +472,8 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredRecords.map((rec) => (
-                  <tr key={rec.id} className="hover:bg-slate-50/60 transition-colors">
+                filteredRecords.map((rec, idx) => (
+                  <tr key={rec.id ? `${rec.id}-${idx}` : `rec-${idx}`} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-4">
                       <div>
                         <p className="font-semibold text-slate-900">{rec.equipmentName}</p>
@@ -583,8 +583,8 @@ export const CalibrationPage: React.FC<CalibrationPageProps> = ({
                   required
                 >
                   <option value="">Select an instrument...</option>
-                  {equipmentList.map((eq) => (
-                    <option key={eq.id} value={eq.id}>
+                  {equipmentList.map((eq, idx) => (
+                    <option key={eq.id ? `${eq.id}-${idx}` : `eq-opt-${idx}`} value={eq.id}>
                       {eq.code} - {eq.name} ({eq.department})
                     </option>
                   ))}

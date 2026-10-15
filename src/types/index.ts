@@ -42,6 +42,20 @@ export interface CalibrationRecord {
   status: 'Completed' | 'Scheduled' | 'In Progress' | 'Overdue';
 }
 
+export interface DispatchedEmailDetails {
+  subject: string;
+  recipients: string[];
+  sender: string;
+  dispatchedAt: string;
+  status: 'DELIVERED' | 'SENT' | 'SIMULATED';
+  htmlBody: string;
+  equipmentCode?: string;
+  equipmentName?: string;
+  urgency: 'OVERDUE' | 'DUE_SOON';
+  daysRemaining: number;
+  dueDate: string;
+}
+
 export interface NotificationItem {
   id: string;
   title: string;
@@ -50,7 +64,9 @@ export interface NotificationItem {
   category: 'alert' | 'system' | 'reminder' | 'success';
   read: boolean;
   equipmentId?: string;
+  equipmentCode?: string;
   actionUrl?: string;
+  emailDetails?: DispatchedEmailDetails;
 }
 
 export interface RecentActivity {

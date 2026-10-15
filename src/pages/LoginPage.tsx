@@ -15,6 +15,8 @@ import {
 import { Button } from '../components/common/Button';
 import { api } from '../services/api';
 import { AuthUser } from '../types';
+import { ForgotPasswordModal } from '../components/auth/ForgotPasswordModal';
+import { OtpVerificationModal } from '../components/auth/OtpVerificationModal';
 
 interface LoginPageProps {
   onLogin: (user: AuthUser) => void;
@@ -25,8 +27,8 @@ interface LoginPageProps {
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, onNavigate }) => {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('admin@calibtrack-lab.com');
-  const [password, setPassword] = useState('AdminPass123!');
+  const [email, setEmail] = useState('asokanmounesh@gmail.com');
+  const [password, setPassword] = useState('a.MOUNESH14');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -35,11 +37,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [isUnverified, setIsUnverified] = useState(false);
+
+  // OTP Verification & Forgot Password Modals
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
+  const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
+  const [pendingOtpEmail, setPendingOtpEmail] = useState('');
+  const [simulationOtpCode, setSimulationOtpCode] = useState<string | null>(null);
+
   const [simulationData, setSimulationData] = useState<{
     mode?: string;
     message?: string;
     verification_token?: string;
     verification_url?: string;
+    otp_code?: string;
   } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,14 +78,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
         }
 
         const regRes = await api.register(name, email, password);
-        setIsRegisterMode(false);
         setConfirmPassword('');
-        setSuccessNotice(
-          regRes.message || 'Staff registration successful. A verification email has been sent to your inbox.'
-        );
+        setPendingOtpEmail(email);
+        const otpCode = regRes.simulation?.otp_code || null;
+        setSimulationOtpCode(otpCode);
         if (regRes.simulation) {
           setSimulationData(regRes.simulation);
         }
+        // Immediately open 6-digit OTP verification modal
+        setIsOtpModalOpen(true);
+        setSuccessNotice('Staff registration initiated. Please enter the 6-digit verification code sent to your email.');
       } else {
         const session = await api.login(email, password);
         onLogin(session.user);
@@ -85,6 +97,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
       setError(msg);
       if (msg.toLowerCase().includes('verif')) {
         setIsUnverified(true);
+        setPendingOtpEmail(email);
       }
     } finally {
       setIsLoading(false);
@@ -164,7 +177,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
                 setShowPassword(false);
                 setShowConfirmPassword(false);
                 // Clear prefilled admin credentials when switching to register fresh staff
-                if (email === 'admin@calibtrack-lab.com') {
+                if (
+                  email === 'asokanmounesh@gmail.com' ||
+                  email === 'admin@calibtrack-lab.com'
+                ) {
                   setEmail('');
                   setPassword('');
                 }
@@ -237,23 +253,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
                 <div className="pt-2 border-t border-rose-500/20 flex flex-wrap items-center gap-2">
                   <Button
                     type="button"
+                    variant="primary"
+                    size="sm"
+                    className="text-[11px] h-7 px-2.5 bg-blue-600 hover:bg-blue-500 text-white"
+                    onClick={() => {
+                      setPendingOtpEmail(email);
+                      setIsOtpModalOpen(true);
+                    }}
+                  >
+                    Enter 6-Digit Code
+                  </Button>
+                  <Button
+                    type="button"
                     variant="outline"
                     size="sm"
                     className="text-[11px] h-7 px-2.5 bg-rose-950/40 text-rose-200 border-rose-700/60 hover:bg-rose-900/60"
                     isLoading={isResending}
                     onClick={handleResendFromLogin}
                   >
-                    Resend Verification Link
+                    Resend Code
                   </Button>
-                  {onNavigate && (
-                    <button
-                      type="button"
-                      onClick={() => onNavigate('/verify-email')}
-                      className="text-[11px] text-blue-400 hover:text-blue-300 underline font-medium cursor-pointer"
-                    >
-                      Enter verification token manually
-                    </button>
-                  )}
                 </div>
               )}
             </div>
@@ -328,6 +347,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
                   )}
                 </button>
               </div>
+
+              {!isRegisterMode && (
+                <div className="flex justify-end mt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setIsForgotPasswordOpen(true);
+                    }}
+                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
             </div>
 
             {isRegisterMode && (
@@ -409,10 +443,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
           </form>
 
           {/* Quick Credential Hint */}
-          <div className="mt-6 pt-4 border-t border-slate-700/60 text-center">
+          <div className="mt-6 pt-4 border-t border-slate-700/60 text-center space-y-2">
             <p className="text-xs text-slate-400">
               Lab Staff Portal · JWT Token Bearer Authentication
             </p>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-700/80 text-[11px] text-slate-300">
+              <span className="font-semibold text-blue-400">Admin Account:</span>
+              <span className="font-mono text-slate-200">asokanmounesh@gmail.com</span>
+              <span className="text-slate-500">|</span>
+              <span className="font-mono text-slate-200">a.MOUNESH14</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('asokanmounesh@gmail.com');
+                  setPassword('a.MOUNESH14');
+                }}
+                className="ml-1 text-[10px] text-blue-400 hover:text-blue-300 underline cursor-pointer"
+              >
+                Auto-fill
+              </button>
+            </div>
           </div>
         </div>
 
@@ -422,6 +472,41 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
           <span>Accredited Metrology & Calibration Management</span>
         </div>
       </div>
+
+      {/* Forgot Password Modal */}
+      {isForgotPasswordOpen && (
+        <ForgotPasswordModal
+          isOpen={true}
+          onClose={() => setIsForgotPasswordOpen(false)}
+          initialEmail={email}
+          onPasswordResetSuccess={() => {
+            setSuccessNotice('Password reset successfully! You can now log in with your new credentials.');
+            setIsForgotPasswordOpen(false);
+          }}
+        />
+      )}
+
+      {/* Staff Registration OTP Verification Modal */}
+      {isOtpModalOpen && (
+        <OtpVerificationModal
+          isOpen={true}
+          onClose={() => setIsOtpModalOpen(false)}
+          email={pendingOtpEmail || email}
+          type="REGISTRATION"
+          simulationCode={simulationOtpCode}
+          onSuccess={(data) => {
+            setIsOtpModalOpen(false);
+            setIsRegisterMode(false);
+            setIsUnverified(false);
+            const verifiedEmail = pendingOtpEmail || email;
+            setEmail(verifiedEmail);
+            setSuccessNotice('Staff email verified successfully! Your account is active and you can now log in.');
+            if (data.user && data.user.id) {
+              onLogin(data.user);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

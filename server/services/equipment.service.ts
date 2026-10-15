@@ -278,6 +278,219 @@ export class EquipmentService {
     const [result]: any = await pool.query('DELETE FROM equipment WHERE id = ?', [current.id]);
     return result.affectedRows > 0;
   }
+  async bulkCreate(items: Array<{
+    equipment_code: string;
+    name: string;
+    category: string;
+    manufacturer?: string;
+    model_number?: string;
+    serial_number?: string;
+    location?: string;
+    department?: string;
+    purchase_date?: string;
+    calibration_interval_days?: number;
+    last_calibration_date?: string;
+    description?: string;
+    created_by?: string;
+  }>): Promise<{
+    success: boolean;
+    totalProcessed: number;
+    importedCount: number;
+    skippedCount: number;
+    createdItems: EquipmentEntity[];
+    skippedItems: Array<{ equipment_code: string; name: string; reason: string }>;
+  }> {
+    const skippedItems: Array<{ equipment_code: string; name: string; reason: string }> = [];
+    const validEntities: EquipmentEntity[] = [];
+
+    // Track codes and serial numbers encountered in this run to detect internal batch duplicates
+    const seenCodes = new Set<string>();
+    const seenSerials = new Set<string>();
+
+    // Pre-populate with existing codes and serials from memoryStore / DB
+    if (isFallback() || !getPool()) {
+      for (const eq of memoryStore.equipment) {
+        if (eq.equipment_code) seenCodes.add(eq.equipment_code.toLowerCase().trim());
+        if (eq.serial_number) seenSerials.add(eq.serial_number.toLowerCase().trim());
+      }
+    } else {
+      const pool = getPool()!;
+      const [rows]: any = await pool.query('SELECT equipment_code, serial_number FROM equipment');
+      for (const r of rows) {
+        if (r.equipment_code) seenCodes.add(String(r.equipment_code).toLowerCase().trim());
+        if (r.serial_number) seenSerials.add(String(r.serial_number).toLowerCase().trim());
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    for (let i = 0; i < items.length; i++) {
+      const raw = items[i];
+      const code = (raw.equipment_code || '').trim();
+      const name = (raw.name || '').trim();
+      const category = (raw.category || '').trim();
+      const intervalDays = raw.calibration_interval_days ? Number(raw.calibration_interval_days) : 180;
+      const serial = (raw.serial_number || '').trim();
+
+      // Field presence checks
+      if (!code) {
+        skippedItems.push({
+          equipment_code: `Row ${i + 1}`,
+          name: name || 'Unnamed Instrument',
+          reason: 'Missing equipment code',
+        });
+        continue;
+      }
+
+      if (!name) {
+        skippedItems.push({
+          equipment_code: code,
+          name: 'Missing Name',
+          reason: 'Equipment name is required',
+        });
+        continue;
+      }
+
+      if (!category) {
+        skippedItems.push({
+          equipment_code: code,
+          name,
+          reason: 'Equipment category is required',
+        });
+        continue;
+      }
+
+      if (isNaN(intervalDays) || intervalDays <= 0) {
+        skippedItems.push({
+          equipment_code: code,
+          name,
+          reason: `Invalid calibration interval: "${raw.calibration_interval_days}". Must be a positive number of days.`,
+        });
+        continue;
+      }
+
+      // Duplicate equipment code check
+      if (seenCodes.has(code.toLowerCase())) {
+        skippedItems.push({
+          equipment_code: code,
+          name,
+          reason: `Duplicate equipment code "${code}" already registered in database or batch.`,
+        });
+        continue;
+      }
+
+      // Duplicate serial number check (if provided)
+      if (serial && seenSerials.has(serial.toLowerCase())) {
+        skippedItems.push({
+          equipment_code: code,
+          name,
+          reason: `Duplicate serial number "${serial}" already exists in database or batch.`,
+        });
+        continue;
+      }
+
+      // Mark code and serial as seen for subsequent items in this batch
+      seenCodes.add(code.toLowerCase());
+      if (serial) seenSerials.add(serial.toLowerCase());
+
+      // Calculate next calibration date & status
+      let nextDate: string | null = null;
+      let status: DbEquipmentStatus = 'CALIBRATED';
+      let lastDate: string | null = null;
+
+      if (raw.last_calibration_date) {
+        const parsed = new Date(raw.last_calibration_date);
+        if (!isNaN(parsed.getTime())) {
+          lastDate = parsed.toISOString().split('T')[0];
+          const next = new Date(parsed.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+          nextDate = next.toISOString().split('T')[0];
+
+          const diffDays = Math.ceil((next.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (diffDays < 0) status = 'OVERDUE';
+          else if (diffDays <= 30) status = 'DUE_SOON';
+          else status = 'CALIBRATED';
+        }
+      }
+
+      if (!nextDate) {
+        // Default next calibration date from today + interval
+        const next = new Date(Date.now() + intervalDays * 24 * 60 * 60 * 1000);
+        nextDate = next.toISOString().split('T')[0];
+      }
+
+      const id = `eq-${crypto.randomUUID().slice(0, 8)}`;
+      const entity: EquipmentEntity = {
+        id,
+        equipment_code: code,
+        name,
+        category,
+        manufacturer: raw.manufacturer ? raw.manufacturer.trim() : null,
+        model_number: raw.model_number ? raw.model_number.trim() : null,
+        serial_number: serial || null,
+        location: raw.location ? raw.location.trim() : 'Central Laboratory',
+        department: raw.department ? raw.department.trim() : 'Quality Control',
+        purchase_date: raw.purchase_date || null,
+        calibration_interval_days: intervalDays,
+        last_calibration_date: lastDate,
+        next_calibration_date: nextDate,
+        status,
+        description: raw.description ? raw.description.trim() : null,
+        created_by: raw.created_by || 'CSV Batch Import',
+        created_at: now,
+        updated_at: now,
+      };
+
+      validEntities.push(entity);
+    }
+
+    // Persist all valid items
+    if (validEntities.length > 0) {
+      if (isFallback() || !getPool()) {
+        memoryStore.equipment.unshift(...validEntities);
+      } else {
+        const pool = getPool()!;
+        for (const entity of validEntities) {
+          await pool.query(
+            `INSERT INTO equipment (
+              id, equipment_code, name, category, manufacturer, model_number,
+              serial_number, location, department, purchase_date,
+              calibration_interval_days, last_calibration_date, next_calibration_date,
+              status, description, created_by, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              entity.id,
+              entity.equipment_code,
+              entity.name,
+              entity.category,
+              entity.manufacturer,
+              entity.model_number,
+              entity.serial_number,
+              entity.location,
+              entity.department,
+              entity.purchase_date,
+              entity.calibration_interval_days,
+              entity.last_calibration_date,
+              entity.next_calibration_date,
+              entity.status,
+              entity.description,
+              entity.created_by,
+              entity.created_at,
+              entity.updated_at,
+            ]
+          );
+        }
+      }
+    }
+
+    return {
+      success: true,
+      totalProcessed: items.length,
+      importedCount: validEntities.length,
+      skippedCount: skippedItems.length,
+      createdItems: validEntities,
+      skippedItems,
+    };
+  }
 }
 
 export const equipmentService = new EquipmentService();

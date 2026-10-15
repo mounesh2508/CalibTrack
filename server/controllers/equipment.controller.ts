@@ -154,6 +154,29 @@ export class EquipmentController {
       Next(error);
     }
   }
+
+  async bulkImport(req: Request, res: Response, Next: NextFunction) {
+    try {
+      const items = Array.isArray(req.body.items) ? req.body.items : (Array.isArray(req.body) ? req.body : []);
+      if (!items || items.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No equipment items provided for bulk import. Expecting { items: [...] } or array of equipment objects.',
+          code: 'EMPTY_BATCH',
+        });
+      }
+
+      const result = await equipmentService.bulkCreate(items);
+
+      res.status(200).json({
+        success: true,
+        message: `Bulk import completed: ${result.importedCount} imported, ${result.skippedCount} skipped.`,
+        data: result,
+      });
+    } catch (error) {
+      Next(error);
+    }
+  }
 }
 
 export const equipmentController = new EquipmentController();

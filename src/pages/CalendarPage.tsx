@@ -185,7 +185,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({
 
                 {/* Day Events Stack */}
                 <div className="space-y-1">
-                  {events.map((evt) => {
+                  {events.map((evt, evtIdx) => {
                     let badgeClass = 'bg-sky-50 text-sky-800 border-sky-200 hover:border-sky-300';
                     let dotClass = 'bg-sky-500';
 
@@ -202,7 +202,7 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({
 
                     return (
                       <button
-                        key={evt.id}
+                        key={evt.id ? `${evt.id}-${evtIdx}` : `evt-${evtIdx}`}
                         onClick={() => setSelectedEvent(evt)}
                         className={`w-full text-left p-1.5 rounded-md border text-[11px] font-medium transition-all shadow-2xs flex items-center gap-1.5 truncate cursor-pointer ${badgeClass}`}
                         title={`${evt.equipmentName} - ${evt.time || ''}`}

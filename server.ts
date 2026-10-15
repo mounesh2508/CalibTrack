@@ -107,20 +107,12 @@ async function startServer() {
     );
 
     proxyReq.on('error', (err: any) => {
-      console.warn(`[CalibTrack Proxy] Could not connect to FastAPI at ${FASTAPI_URL} (${req.method} ${pathname}):`, err.message);
+      console.warn(`[CalibTrack Proxy] Could not connect to FastAPI at ${FASTAPI_URL} (${req.method} ${pathname}), routing via Express backend:`, err.message);
 
-      // If it is an auth endpoint, Express router doesn't implement auth; return clear 503 with instructions
-      if (pathname.includes('/auth/')) {
-        return res.status(503).json({
-          detail: `FastAPI authentication service is unavailable at ${FASTAPI_URL}. Please start FastAPI using: py -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8001`,
-          error: err.code || err.message,
-        });
-      }
-
-      // Fall back to Express router for mock/in-memory data routes
+      // Fall back to Express router for all endpoints (including auth & mock/in-memory data routes)
       return apiRouter(req, res, () => {
         return res.status(503).json({
-          detail: `Backend service is unavailable at ${FASTAPI_URL}. Please ensure FastAPI is running.`,
+          detail: `Backend service is unavailable at ${FASTAPI_URL}. Please ensure service is running.`,
           error: err.code || err.message,
         });
       });

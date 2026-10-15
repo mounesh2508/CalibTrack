@@ -59,3 +59,22 @@ class ResendVerificationResponse(BaseModel):
 
 class UserRoleUpdate(BaseModel):
     role: Literal["ADMIN", "TECHNICIAN"] = Field(..., description="Target role: ADMIN or TECHNICIAN")
+
+class VerifyCodeRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=10, description="Verification OTP code")
+    type: Optional[str] = "REGISTRATION"
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    new_password: str = Field(..., min_length=8, description="New account password")
+    reset_token: Optional[str] = None
+    code: Optional[str] = None
+
+class ResendCodeRequest(BaseModel):
+    email: EmailStr
+    type: Optional[str] = "REGISTRATION"
+

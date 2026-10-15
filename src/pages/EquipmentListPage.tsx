@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -24,6 +25,7 @@ import { EmptyState } from '../components/common/EmptyState';
 import { LoadingState } from '../components/common/LoadingState';
 import { Modal } from '../components/common/Modal';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
+import { CsvImportModal } from '../components/equipment/CsvImportModal';
 import { Equipment, AuthUser } from '../types';
 import { api } from '../services/api';
 
@@ -77,15 +79,24 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
   // Success toast/message state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Bulk CSV Import modal state
+  const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
+
   const pageSize = 8;
 
   // Extract unique categories & locations
   const categories = useMemo(() => {
-    return ['All', ...Array.from(new Set(equipmentList.map((e) => e.category)))];
+    const rawCategories = equipmentList
+      .map((e) => e.category)
+      .filter((c): c is NonNullable<typeof c> => Boolean(c && typeof c === 'string' && c.trim() && (c as string) !== 'All'));
+    return ['All', ...Array.from(new Set(rawCategories))];
   }, [equipmentList]);
 
   const locations = useMemo(() => {
-    return ['All', ...Array.from(new Set(equipmentList.map((e) => e.department)))];
+    const rawLocations = equipmentList
+      .map((e) => e.department)
+      .filter((l): l is NonNullable<typeof l> => Boolean(l && typeof l === 'string' && l.trim() && (l as string) !== 'All'));
+    return ['All', ...Array.from(new Set(rawLocations))];
   }, [equipmentList]);
 
   // Filter and sort items
@@ -274,7 +285,15 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCsvImportOpen(true)}
+            icon={<FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />}
+          >
+            Import CSV
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -323,8 +342,8 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
             className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="All">All Categories</option>
-            {categories.filter((c) => c !== 'All').map((c) => (
-              <option key={c} value={c}>{c}</option>
+            {categories.filter((c) => c && c !== 'All').map((c, idx) => (
+              <option key={`cat-${c || idx}`} value={c}>{c}</option>
             ))}
           </select>
 
@@ -353,8 +372,8 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
             className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="All">All Departments</option>
-            {locations.filter((l) => l !== 'All').map((loc) => (
-              <option key={loc} value={loc}>{loc}</option>
+            {locations.filter((l) => l && l !== 'All').map((loc, idx) => (
+              <option key={`loc-${loc || idx}`} value={loc}>{loc}</option>
             ))}
           </select>
         </div>
@@ -429,9 +448,9 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {paginatedItems.map((eq) => (
+                {paginatedItems.map((eq, idx) => (
                   <tr
-                    key={eq.id}
+                    key={eq.id ? `${eq.id}-${idx}` : `eq-${idx}`}
                     className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
                     onClick={() => onNavigate(`/equipment/${eq.id}`)}
                   >
@@ -753,6 +772,20 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
           </div>
         </Modal>
       )}
+
+      {/* Bulk CSV Import Modal */}
+      <CsvImportModal
+        isOpen={isCsvImportOpen}
+        onClose={() => setIsCsvImportOpen(false)}
+        existingEquipment={equipmentList}
+        onImportSuccess={async (importedCount) => {
+          if (onRefreshList) {
+            await onRefreshList();
+          }
+          setToastMessage(`Bulk import successful: ${importedCount} equipment record${importedCount === 1 ? '' : 's'} registered.`);
+          setTimeout(() => setToastMessage(null), 4000);
+        }}
+      />
     </div>
   );
 };

@@ -151,9 +151,9 @@ export const Header: React.FC<HeaderProps> = ({
                         <p className="text-[11px] text-slate-400 mt-1">All calibrations and equipment updates are synchronized.</p>
                       </div>
                     ) : (
-                      notifications.slice(0, 4).map((n) => (
+                      notifications.slice(0, 4).map((n, idx) => (
                         <div
-                          key={n.id}
+                          key={n.id ? `${n.id}-${idx}` : `notif-${idx}`}
                           onClick={() => {
                             setShowNotifMenu(false);
                             if (n.equipmentId) onNavigate(`/equipment/${n.equipmentId}`);
@@ -268,9 +268,9 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               ) : (
                 <div className="space-y-1">
-                  {filteredEquipment.map((eq) => (
+                  {filteredEquipment.map((eq, idx) => (
                     <div
-                      key={eq.id}
+                      key={eq.id ? `${eq.id}-${idx}` : `search-${idx}`}
                       onClick={() => {
                         setShowSearchModal(false);
                         onNavigate(`/equipment/${eq.id}`);
