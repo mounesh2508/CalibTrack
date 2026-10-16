@@ -155,7 +155,9 @@ async function startServer() {
   });
 }
 
-startServer().catch((error) => {
-  console.error('[CalibTrack] Fatal startup error:', error);
-  process.exit(1);
-});
+if (!process.env.VERCEL) {
+  startServer().catch((error) => {
+    console.error('[CalibTrack] Fatal startup error:', error);
+    process.exit(1);
+  });
+}
