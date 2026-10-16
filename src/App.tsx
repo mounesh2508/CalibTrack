@@ -59,8 +59,17 @@ export default function App() {
   });
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
 
-  // Initialize with empty arrays so empty databases correctly show 0 items
-  const [equipmentList, setEquipmentList] = useState<Equipment[]>([]);
+  // Initialize with local cache or empty array
+  const [equipmentList, setEquipmentList] = useState<Equipment[]>(() => {
+    try {
+      const stored = localStorage.getItem('calibtrack_local_equipment');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [calibrationRecords, setCalibrationRecords] = useState<CalibrationRecord[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);

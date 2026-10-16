@@ -112,11 +112,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     fetchDashboardData();
   }, []);
 
-  // Compute metrics from summary or fallback to passed equipment list
-  const totalCount = summary ? summary.totalEquipment : initialEquipmentList.length;
-  const dueSoonCount = summary ? summary.dueSoonCount : initialEquipmentList.filter((e) => e.status === 'due_soon').length;
-  const overdueCount = summary ? summary.overdueCount : initialEquipmentList.filter((e) => e.status === 'overdue').length;
-  const calibratedCount = summary ? summary.calibratedCount : initialEquipmentList.filter((e) => e.status === 'calibrated').length;
+  // Compute 100% accurate metrics from active equipment list (synchronized with registry)
+  const hasRealEquipment = Boolean(initialEquipmentList && initialEquipmentList.length > 0);
+  const totalCount = hasRealEquipment ? initialEquipmentList.length : (summary ? summary.totalEquipment : 0);
+  const calibratedCount = hasRealEquipment
+    ? initialEquipmentList.filter((e) => e.status === 'calibrated').length
+    : (summary ? summary.calibratedCount : 0);
+  const dueSoonCount = hasRealEquipment
+    ? initialEquipmentList.filter((e) => e.status === 'due_soon').length
+    : (summary ? summary.dueSoonCount : 0);
+  const overdueCount = hasRealEquipment
+    ? initialEquipmentList.filter((e) => e.status === 'overdue').length
+    : (summary ? summary.overdueCount : 0);
 
   const statusPieData = totalCount === 0
     ? [{ name: 'No Assets Registered', value: 1, color: '#e2e8f0' }]
@@ -126,22 +133,46 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         { name: 'Overdue', value: overdueCount, color: '#f43f5e' },
       ];
 
-  // Department compliance chart: 0 values when no equipment registered
-  const departmentChartData = totalCount === 0
-    ? [
-        { name: 'Analytical Chem', calibrated: 0, pending: 0 },
-        { name: 'Quality Control', calibrated: 0, pending: 0 },
-        { name: 'Bioassay', calibrated: 0, pending: 0 },
-        { name: 'Microbiology', calibrated: 0, pending: 0 },
-        { name: 'R&D Formulation', calibrated: 0, pending: 0 },
-      ]
-    : [
-        { name: 'Analytical Chem', calibrated: Math.round(calibratedCount * 0.35), pending: Math.round(dueSoonCount * 0.4) },
-        { name: 'Quality Control', calibrated: Math.round(calibratedCount * 0.25), pending: Math.round(overdueCount * 0.5) },
-        { name: 'Bioassay', calibrated: Math.round(calibratedCount * 0.2), pending: Math.round(dueSoonCount * 0.3) },
-        { name: 'Microbiology', calibrated: Math.round(calibratedCount * 0.15), pending: Math.round(overdueCount * 0.3) },
-        { name: 'R&D Formulation', calibrated: Math.round(calibratedCount * 0.15), pending: 0 },
-      ];
+  // Real Department Statistics: Group actual registered equipment by school/college laboratory department
+  const departmentChartData = React.useMemo(() => {
+    const defaultDepts = [
+      'Physics Lab',
+      'Chemistry Lab',
+      'Biology Lab',
+      'Computer Science Lab',
+      'Engineering & Robotics Lab',
+    ];
+
+    if (!initialEquipmentList || initialEquipmentList.length === 0) {
+      return defaultDepts.map((name) => ({ name, calibrated: 0, pending: 0 }));
+    }
+
+    const deptMap: Record<string, { calibrated: number; pending: number }> = {};
+    defaultDepts.forEach((d) => {
+      deptMap[d] = { calibrated: 0, pending: 0 };
+    });
+
+    initialEquipmentList.forEach((eq) => {
+      const dept = eq.department || 'General Science Lab';
+      if (!deptMap[dept]) {
+        deptMap[dept] = { calibrated: 0, pending: 0 };
+      }
+      if (eq.status === 'calibrated') {
+        deptMap[dept].calibrated += 1;
+      } else {
+        deptMap[dept].pending += 1;
+      }
+    });
+
+    return Object.entries(deptMap)
+      .map(([name, counts]) => ({
+        name,
+        calibrated: counts.calibrated,
+        pending: counts.pending,
+      }))
+      .filter((d) => d.calibrated > 0 || d.pending > 0 || defaultDepts.includes(d.name))
+      .slice(0, 6);
+  }, [initialEquipmentList]);
 
   // Upcoming items from real backend summary or equipment list (strictly empty when totalCount is 0)
   const upcomingEquipment: Equipment[] = totalCount === 0

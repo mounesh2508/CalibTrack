@@ -559,10 +559,10 @@ export const api = {
         .slice(0, 6);
 
       return {
-        totalEquipment: Math.max(equipmentList.length, 15),
-        calibratedCount: Math.max(calibratedCount, 5),
-        dueSoonCount: Math.max(dueSoonCount, 5),
-        overdueCount: Math.max(overdueCount, 5),
+        totalEquipment: equipmentList.length,
+        calibratedCount,
+        dueSoonCount,
+        overdueCount,
         upcomingCalibrations,
         recentCalibrationRecords: [],
       };

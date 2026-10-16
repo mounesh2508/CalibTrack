@@ -44,12 +44,16 @@ export default async function handler(req: any, res: any) {
       // If summary was requested, return safe fallback metrics
       const url = req.url || '';
       if (url.includes('summary')) {
+        const list = memoryStore.equipment || [];
+        const cal = list.filter((e) => e.status === 'CALIBRATED').length;
+        const due = list.filter((e) => e.status === 'DUE_SOON').length;
+        const ovr = list.filter((e) => e.status === 'OVERDUE').length;
         return res.status(200).json({
           success: true,
-          total_equipment: memoryStore.equipment.length,
-          calibrated_count: 5,
-          due_soon_count: 5,
-          overdue_count: 5,
+          total_equipment: list.length,
+          calibrated_count: cal,
+          due_soon_count: due,
+          overdue_count: ovr,
           upcoming_calibrations: [],
           recent_calibration_activity: [],
           fallback: true,
