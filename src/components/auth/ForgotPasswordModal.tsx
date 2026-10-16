@@ -393,30 +393,6 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
           {/* STEP 2: VERIFY 6-DIGIT OTP */}
           {step === 'VERIFY_OTP' && (
             <div className="space-y-4">
-              {/* In-app Preview Drawer */}
-              {activePreviewCode && (
-                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-                    <div>
-                      <span className="font-semibold text-indigo-900 block text-[11px]">
-                        Gmail In-App Preview (Test Mode)
-                      </span>
-                      <span className="font-mono text-sm font-bold text-indigo-700 tracking-wider">
-                        {activePreviewCode}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAutoFillOtp}
-                    className="px-2.5 py-1 text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-xs"
-                  >
-                    Auto-Fill & Verify
-                  </button>
-                </div>
-              )}
-
               <div>
                 <p className="text-xs text-slate-600 mb-3 text-center">
                   Enter the 6-digit verification code sent to <br />

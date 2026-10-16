@@ -1,4 +1,5 @@
 import { Equipment } from '../types';
+import { SCHOOL_COLLEGE_CATEGORIES, SCHOOL_COLLEGE_DEPARTMENTS } from '../constants/schoolLabPresets';
 
 export interface ParsedEquipmentRow {
   rowNumber: number;
@@ -21,7 +22,8 @@ export interface ParsedEquipmentRow {
   duplicateReason?: string;
 }
 
-export const VALID_CATEGORIES: Equipment['category'][] = [
+export const VALID_CATEGORIES: string[] = [
+  ...SCHOOL_COLLEGE_CATEGORIES,
   'Balances & Scales',
   'Spectroscopy',
   'Centrifuges',
@@ -31,7 +33,8 @@ export const VALID_CATEGORIES: Equipment['category'][] = [
   'Sterilization',
 ];
 
-export const VALID_DEPARTMENTS: Equipment['department'][] = [
+export const VALID_DEPARTMENTS: string[] = [
+  ...SCHOOL_COLLEGE_DEPARTMENTS,
   'Analytical Chemistry',
   'Microbiology',
   'Quality Control',
@@ -41,32 +44,42 @@ export const VALID_DEPARTMENTS: Equipment['department'][] = [
 
 // Helper to normalize category from string
 function matchCategory(input: string): Equipment['category'] {
-  const norm = input.trim().toLowerCase();
+  const trimmed = input.trim();
+  if (!trimmed) return 'Measurement & Metrology';
+
+  const norm = trimmed.toLowerCase();
   for (const cat of VALID_CATEGORIES) {
     if (cat.toLowerCase() === norm) return cat;
   }
-  if (norm.includes('balance') || norm.includes('scale')) return 'Balances & Scales';
-  if (norm.includes('spectro') || norm.includes('uv') || norm.includes('ftir')) return 'Spectroscopy';
-  if (norm.includes('centrifuge')) return 'Centrifuges';
-  if (norm.includes('ph') || norm.includes('electro') || norm.includes('conductivity')) return 'Electrochemistry';
-  if (norm.includes('temp') || norm.includes('oven') || norm.includes('incubator') || norm.includes('thermal') || norm.includes('chamber')) return 'Thermal & Environmental';
-  if (norm.includes('chromat') || norm.includes('hplc') || norm.includes('gc')) return 'Chromatography';
-  if (norm.includes('steril') || norm.includes('autoclave')) return 'Sterilization';
-  return 'Balances & Scales';
+  if (norm.includes('optic') || norm.includes('microscope') || norm.includes('telescope') || norm.includes('lens')) return 'Optical Instruments';
+  if (norm.includes('electric') || norm.includes('circuit') || norm.includes('oscillo') || norm.includes('multimeter')) return 'Electrical & Electronics';
+  if (norm.includes('thermal') || norm.includes('heat') || norm.includes('burner') || norm.includes('oven')) return 'Thermal & Heating';
+  if (norm.includes('glass') || norm.includes('titrat') || norm.includes('burette') || norm.includes('pipette')) return 'Chemical & Glassware Apparatus';
+  if (norm.includes('bio') || norm.includes('dissect') || norm.includes('specimen')) return 'Biological & Specimen Equipment';
+  if (norm.includes('robot') || norm.includes('comput') || norm.includes('arduino') || norm.includes('sensor')) return 'Computing & Robotics Hardware';
+  if (norm.includes('balance') || norm.includes('scale') || norm.includes('caliper') || norm.includes('gauge') || norm.includes('meter')) return 'Measurement & Metrology';
+
+  // Return custom user string directly
+  return trimmed;
 }
 
 // Helper to normalize department from string
 function matchDepartment(input: string): Equipment['department'] {
-  const norm = input.trim().toLowerCase();
+  const trimmed = input.trim();
+  if (!trimmed) return 'Physics Lab';
+
+  const norm = trimmed.toLowerCase();
   for (const dept of VALID_DEPARTMENTS) {
     if (dept.toLowerCase() === norm) return dept;
   }
-  if (norm.includes('chem') || norm.includes('analytical')) return 'Analytical Chemistry';
-  if (norm.includes('micro')) return 'Microbiology';
-  if (norm.includes('quality') || norm.includes('qc') || norm.includes('qa')) return 'Quality Control';
-  if (norm.includes('r&d') || norm.includes('formulation') || norm.includes('research')) return 'R&D Formulation';
-  if (norm.includes('bio') || norm.includes('assay')) return 'Bioassay';
-  return 'Quality Control';
+  if (norm.includes('physic')) return 'Physics Lab';
+  if (norm.includes('chem')) return 'Chemistry Lab';
+  if (norm.includes('bio') || norm.includes('botany') || norm.includes('zoology')) return 'Biology Lab';
+  if (norm.includes('comput') || norm.includes('cs') || norm.includes('it') || norm.includes('software')) return 'Computer Science Lab';
+  if (norm.includes('engineer') || norm.includes('robot') || norm.includes('mech') || norm.includes('electr')) return 'Engineering & Robotics Lab';
+
+  // Return custom user string directly
+  return trimmed;
 }
 
 // Robust CSV parser supporting quotes, commas, escaped quotes, and newlines
@@ -371,94 +384,94 @@ export function generateEquipmentSampleCsv(): string {
 
   const sampleRows = [
     [
-      'EQ-201',
-      'Analytical Balance 0.1mg',
-      'Balances & Scales',
+      'EQ-SCH-101',
+      'Digital Analytical Balance',
+      'Measurement & Metrology',
       'Mettler Toledo',
-      'XSR205',
+      'ME204T',
       'SN-MT-88412',
-      'Quality Control',
-      'Lab 3B - Bench 2',
-      '2023-05-15',
+      'Physics Lab',
+      'Physics Lab - Bench 2',
+      '2024-05-15',
       '6',
       '2026-02-10',
       'Dr. Sarah Lin',
-      'Dual-range microbalance with motorized internal calibration',
+      'Class F1 stainless steel standard weights calibration',
     ],
     [
-      'EQ-202',
-      'Double Beam UV-Vis Spectrophotometer',
-      'Spectroscopy',
-      'Shimadzu',
-      'UV-1900i',
-      'SN-SH-44120',
-      'Analytical Chemistry',
-      'Optical Suite 1',
-      '2022-11-20',
+      'EQ-SCH-102',
+      'Binocular Compound Optical Microscope',
+      'Optical Instruments',
+      'Olympus',
+      'CX23',
+      'SN-OLY-44120',
+      'Biology Lab',
+      'Biology Suite 1',
+      '2023-11-20',
       '12',
       '2025-10-15',
-      'Alex Mercer',
-      'Wavelength 190-1100 nm for pharmaceutical active assay testing',
+      'Marcus Vance',
+      'Objective lenses 4x, 10x, 40x, 100x oil immersion',
     ],
     [
-      'EQ-203',
-      'Refrigerated High-Speed Centrifuge',
-      'Centrifuges',
-      'Beckman Coulter',
-      'Avanti J-15R',
-      'SN-BC-90311',
-      'Microbiology',
-      'Bio Prep Room 2',
+      'EQ-SCH-103',
+      'Digital Storage Oscilloscope 100MHz',
+      'Electrical & Electronics',
+      'Tektronix',
+      'TBS1102B',
+      'SN-TK-90311',
+      'Computer Science Lab',
+      'Hardware Lab Room 3',
       '2024-01-10',
       '6',
       '2026-01-20',
-      'Elena Rostova',
-      'Max speed 10200 RPM with temp range -10 to +40 C',
+      'Mounesh A',
+      'Dual channel 2GS/s sampling rate frequency verification',
     ],
     [
-      'EQ-204',
-      'Benchtop Multi-Parameter pH/ORP Meter',
-      'Electrochemistry',
-      'Thermo Scientific',
-      'Orion Star A211',
-      'SN-TS-67123',
-      'Quality Control',
-      'Wet Chemistry Bench 4',
+      'EQ-SCH-104',
+      'Digital Magnetic Stirrer with Ceramic Hot Plate',
+      'Thermal & Heating',
+      'Corning',
+      'PC-420D',
+      'SN-CR-67123',
+      'Chemistry Lab',
+      'Inorganic Chemistry Bench 4',
       '2023-08-05',
-      '3',
+      '6',
       '2026-03-01',
       'Dr. Sarah Lin',
-      '3-point buffer calibration ISO 17025 compliant probe',
+      'Temperature sensor probe calibration up to 550 C',
     ],
     [
-      'EQ-205',
-      'Forced Convection Lab Incubator',
-      'Thermal & Environmental',
-      'Memmert',
-      'IN55',
-      'SN-MM-31094',
-      'Microbiology',
-      'Incubation Room 4A',
-      '2021-09-12',
+      'EQ-SCH-105',
+      'Benchtop Clinical Centrifuge',
+      'Biological & Specimen Equipment',
+      'Eppendorf',
+      '5702R',
+      'SN-EP-31094',
+      'Biology Lab',
+      'Specimen Prep Bench',
+      '2023-09-12',
       '12',
       '2025-09-01',
       'Marcus Vance',
-      'Chamber 53L with dual PT100 temperature sensors',
+      'Rotor speed 4400 RPM tachometer calibration',
     ],
     [
-      'EQ-206',
-      'High-Performance Liquid Chromatograph',
-      'Chromatography',
-      'Waters',
-      'Alliance e2695',
-      'SN-WT-55091',
-      'Analytical Chemistry',
-      'Chromatography Lab 2',
-      '2023-03-18',
+      'EQ-SCH-106',
+      'Robotics & Microcontroller Workstation',
+      'Computing & Robotics Hardware',
+      'National Instruments',
+      'myRIO-1900',
+      'SN-NI-55091',
+      'Engineering & Robotics Lab',
+      'Robotics Studio 2',
+      '2024-03-18',
       '6',
       '2026-02-28',
-      'Alex Mercer',
-      'Quaternary pump with vacuum degasser and autosampler',
+      'Mounesh A',
+      'FPGA I/O channels and analog input calibration',
     ],
   ];
 

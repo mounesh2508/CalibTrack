@@ -197,36 +197,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
 
           {/* Success Notice */}
           {successNotice && (
-            <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 space-y-2">
-              <div className="flex items-start gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="block font-semibold">Registration Update</strong>
-                  <span>{successNotice}</span>
-                </div>
+            <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 flex items-start gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <strong className="block font-semibold">Registration Update</strong>
+                <span>{successNotice}</span>
               </div>
-              {simulationData && simulationData.verification_url && (
-                <div className="p-2.5 rounded bg-slate-900/80 border border-emerald-500/20 text-[11px] space-y-1.5 text-slate-300">
-                  <span className="font-semibold text-emerald-300 block">Development Simulation Preview:</span>
-                  <p className="text-slate-400">SMTP is unconfigured; use this simulated verification link to activate your account:</p>
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const path = simulationData.verification_url!.replace(/^https?:\/\/[^/]+/, '');
-                        if (onNavigate) {
-                          onNavigate(path);
-                        } else {
-                          window.location.href = simulationData.verification_url!;
-                        }
-                      }}
-                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-medium transition-colors cursor-pointer"
-                    >
-                      Verify Account Now →
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -442,27 +418,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
             </Button>
           </form>
 
-          {/* Quick Credential Hint */}
-          <div className="mt-6 pt-4 border-t border-slate-700/60 text-center space-y-2">
+          {/* Portal Authentication Notice */}
+          <div className="mt-6 pt-4 border-t border-slate-700/60 text-center">
             <p className="text-xs text-slate-400">
               Lab Staff Portal · JWT Token Bearer Authentication
             </p>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900/80 border border-slate-700/80 text-[11px] text-slate-300">
-              <span className="font-semibold text-blue-400">Admin Account:</span>
-              <span className="font-mono text-slate-200">asokanmounesh@gmail.com</span>
-              <span className="text-slate-500">|</span>
-              <span className="font-mono text-slate-200">a.MOUNESH14</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setEmail('asokanmounesh@gmail.com');
-                  setPassword('a.MOUNESH14');
-                }}
-                className="ml-1 text-[10px] text-blue-400 hover:text-blue-300 underline cursor-pointer"
-              >
-                Auto-fill
-              </button>
-            </div>
           </div>
         </div>
 

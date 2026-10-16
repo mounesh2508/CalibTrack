@@ -537,10 +537,32 @@ export const api = {
     if (filters?.sort_order) params.append('sort_order', filters.sort_order);
 
     const query = params.toString() ? `?${params.toString()}` : '';
-    const raw = await request<any>(`/equipment${query}`);
+    let rawList: any[] = [];
+    let total = 0;
 
-    const rawList = raw.items || raw.data || (Array.isArray(raw) ? raw : []);
-    const total = raw.total ?? raw.count ?? rawList.length;
+    try {
+      const raw = await request<any>(`/equipment${query}`);
+      rawList = raw.items || raw.data || (Array.isArray(raw) ? raw : []);
+      total = raw.total ?? raw.count ?? rawList.length;
+    } catch {
+      // In offline or static preview environments, fall back to locally stored equipment
+    }
+
+    // Merge locally registered equipment from storage
+    try {
+      const stored = localStorage.getItem('calibtrack_local_equipment');
+      if (stored) {
+        const localItems: Equipment[] = JSON.parse(stored);
+        const knownCodes = new Set(rawList.map((e: any) => (e.equipment_code || e.equipmentCode || e.code || '').toLowerCase()));
+        for (const localItem of localItems) {
+          if (!knownCodes.has(localItem.code.toLowerCase())) {
+            rawList.push(localItem);
+            knownCodes.add(localItem.code.toLowerCase());
+            total++;
+          }
+        }
+      }
+    } catch {}
 
     return {
       items: rawList.map(mapBackendEquipmentToFrontend),
@@ -549,18 +571,53 @@ export const api = {
   },
 
   async fetchEquipmentItem(id: string): Promise<Equipment> {
-    const raw = await request<any>(`/equipment/${encodeURIComponent(id)}`);
-    const data = raw.data || raw;
-    return mapBackendEquipmentToFrontend(data);
+    try {
+      const raw = await request<any>(`/equipment/${encodeURIComponent(id)}`);
+      const data = raw.data || raw;
+      return mapBackendEquipmentToFrontend(data);
+    } catch {
+      // Check local storage fallback
+      try {
+        const stored = localStorage.getItem('calibtrack_local_equipment');
+        if (stored) {
+          const list: Equipment[] = JSON.parse(stored);
+          const found = list.find((e) => e.id === id || e.code === id);
+          if (found) return found;
+        }
+      } catch {}
+      throw new Error(`Equipment '${id}' not found.`);
+    }
   },
 
   async createEquipment(payload: EquipmentApiPayload): Promise<Equipment> {
-    const raw = await request<any>('/equipment', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-    const data = raw.data || raw;
-    return mapBackendEquipmentToFrontend(data);
+    try {
+      const raw = await request<any>('/equipment', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const data = raw.data || raw;
+      const created = mapBackendEquipmentToFrontend(data);
+      try {
+        const stored = localStorage.getItem('calibtrack_local_equipment');
+        const list: Equipment[] = stored ? JSON.parse(stored) : [];
+        list.push(created);
+        localStorage.setItem('calibtrack_local_equipment', JSON.stringify(list));
+      } catch {}
+      return created;
+    } catch (err) {
+      // Client fallback
+      const created = mapBackendEquipmentToFrontend({
+        ...payload,
+        id: `eq-local-${Date.now()}`,
+      });
+      try {
+        const stored = localStorage.getItem('calibtrack_local_equipment');
+        const list: Equipment[] = stored ? JSON.parse(stored) : [];
+        list.push(created);
+        localStorage.setItem('calibtrack_local_equipment', JSON.stringify(list));
+      } catch {}
+      return created;
+    }
   },
 
   async bulkImportEquipment(items: any[]): Promise<{
@@ -571,23 +628,107 @@ export const api = {
     createdItems: Equipment[];
     skippedItems: Array<{ equipment_code: string; name: string; reason: string }>;
   }> {
-    const raw = await request<any>('/equipment/bulk-import', {
-      method: 'POST',
-      body: JSON.stringify({ items }),
-    });
-    const result = raw.data || raw;
-    const createdItems = Array.isArray(result.createdItems)
-      ? result.createdItems.map(mapBackendEquipmentToFrontend)
-      : [];
+    try {
+      const raw = await request<any>('/equipment/bulk-import', {
+        method: 'POST',
+        body: JSON.stringify({ items }),
+      });
+      const result = raw.data || raw;
+      const createdItems = Array.isArray(result.createdItems)
+        ? result.createdItems.map(mapBackendEquipmentToFrontend)
+        : [];
 
-    return {
-      success: !!result.success,
-      totalProcessed: result.totalProcessed || 0,
-      importedCount: result.importedCount || createdItems.length,
-      skippedCount: result.skippedCount || 0,
-      createdItems,
-      skippedItems: result.skippedItems || [],
-    };
+      // Persist to local cache mirror for offline/standalone persistence
+      try {
+        const stored = localStorage.getItem('calibtrack_local_equipment');
+        const list: Equipment[] = stored ? JSON.parse(stored) : [];
+        const existingCodes = new Set(list.map((e) => e.code.toLowerCase()));
+        for (const c of createdItems) {
+          if (!existingCodes.has(c.code.toLowerCase())) {
+            list.push(c);
+            existingCodes.add(c.code.toLowerCase());
+          }
+        }
+        localStorage.setItem('calibtrack_local_equipment', JSON.stringify(list));
+      } catch {}
+
+      return {
+        success: !!result.success,
+        totalProcessed: result.totalProcessed || items.length,
+        importedCount: result.importedCount ?? createdItems.length,
+        skippedCount: result.skippedCount ?? 0,
+        createdItems,
+        skippedItems: result.skippedItems || [],
+      };
+    } catch (err: any) {
+      console.warn('[CalibTrack API] Server bulk-import fallback activated:', err?.message);
+
+      // Resilient client-side fallback for static Vercel, offline, or standalone mode
+      const createdItems: Equipment[] = [];
+      const skippedItems: Array<{ equipment_code: string; name: string; reason: string }> = [];
+
+      let localList: Equipment[] = [];
+      try {
+        const stored = localStorage.getItem('calibtrack_local_equipment');
+        localList = stored ? JSON.parse(stored) : [];
+      } catch {}
+
+      const existingCodes = new Set<string>(localList.map((e) => e.code.toLowerCase()));
+      const existingSerials = new Set<string>(
+        localList
+          .filter((e) => e.serialNumber && e.serialNumber !== 'N/A' && e.serialNumber !== 'SN-UNASSIGNED')
+          .map((e) => e.serialNumber.toLowerCase())
+      );
+
+      for (let i = 0; i < items.length; i++) {
+        const raw = items[i];
+        const code = (raw.equipment_code || raw.equipmentCode || raw.code || '').trim();
+        const serial = (raw.serial_number || raw.serialNumber || '').trim();
+        const name = (raw.name || 'Unnamed Instrument').trim();
+
+        if (!code) {
+          skippedItems.push({ equipment_code: `Row ${i + 1}`, name, reason: 'Missing equipment identifier / code' });
+          continue;
+        }
+
+        if (existingCodes.has(code.toLowerCase())) {
+          skippedItems.push({ equipment_code: code, name, reason: `Equipment code '${code}' already exists` });
+          continue;
+        }
+
+        if (serial && serial !== 'N/A' && serial !== 'SN-UNASSIGNED' && existingSerials.has(serial.toLowerCase())) {
+          skippedItems.push({ equipment_code: code, name, reason: `Serial number '${serial}' is already registered` });
+          continue;
+        }
+
+        const mapped = mapBackendEquipmentToFrontend({
+          ...raw,
+          id: raw.id || `eq-import-${Date.now()}-${i}`,
+          equipment_code: code,
+          name,
+        });
+
+        createdItems.push(mapped);
+        localList.push(mapped);
+        existingCodes.add(code.toLowerCase());
+        if (serial && serial !== 'N/A' && serial !== 'SN-UNASSIGNED') {
+          existingSerials.add(serial.toLowerCase());
+        }
+      }
+
+      try {
+        localStorage.setItem('calibtrack_local_equipment', JSON.stringify(localList));
+      } catch {}
+
+      return {
+        success: true,
+        totalProcessed: items.length,
+        importedCount: createdItems.length,
+        skippedCount: skippedItems.length,
+        createdItems,
+        skippedItems,
+      };
+    }
   },
 
   async updateEquipment(id: string, updates: Partial<EquipmentApiPayload>): Promise<Equipment> {

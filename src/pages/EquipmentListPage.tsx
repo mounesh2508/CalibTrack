@@ -25,6 +25,8 @@ import { EmptyState } from '../components/common/EmptyState';
 import { LoadingState } from '../components/common/LoadingState';
 import { Modal } from '../components/common/Modal';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
+import { AutocompleteInput } from '../components/common/AutocompleteInput';
+import { SCHOOL_COLLEGE_CATEGORIES, SCHOOL_COLLEGE_DEPARTMENTS } from '../constants/schoolLabPresets';
 import { CsvImportModal } from '../components/equipment/CsvImportModal';
 import { Equipment, AuthUser } from '../types';
 import { api } from '../services/api';
@@ -84,19 +86,19 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
 
   const pageSize = 8;
 
-  // Extract unique categories & locations
+  // Extract unique categories & locations (combining school/college presets with registered equipment)
   const categories = useMemo(() => {
     const rawCategories = equipmentList
       .map((e) => e.category)
       .filter((c): c is NonNullable<typeof c> => Boolean(c && typeof c === 'string' && c.trim() && (c as string) !== 'All'));
-    return ['All', ...Array.from(new Set(rawCategories))];
+    return ['All', ...Array.from(new Set([...SCHOOL_COLLEGE_CATEGORIES, ...rawCategories]))];
   }, [equipmentList]);
 
   const locations = useMemo(() => {
     const rawLocations = equipmentList
       .map((e) => e.department)
       .filter((l): l is NonNullable<typeof l> => Boolean(l && typeof l === 'string' && l.trim() && (l as string) !== 'All'));
-    return ['All', ...Array.from(new Set(rawLocations))];
+    return ['All', ...Array.from(new Set([...SCHOOL_COLLEGE_DEPARTMENTS, ...rawLocations]))];
   }, [equipmentList]);
 
   // Filter and sort items
@@ -409,7 +411,7 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
         />
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto min-h-[220px]">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50/80 text-slate-600 font-semibold border-b border-slate-200">
                 <tr>
@@ -448,9 +450,12 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {paginatedItems.map((eq, idx) => (
-                  <tr
-                    key={eq.id ? `${eq.id}-${idx}` : `eq-${idx}`}
+                {paginatedItems.map((eq, idx) => {
+                  const isNearBottom = idx >= Math.max(0, paginatedItems.length - 2);
+
+                  return (
+                    <tr
+                      key={eq.id ? `${eq.id}-${idx}` : `eq-${idx}`}
                     className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
                     onClick={() => onNavigate(`/equipment/${eq.id}`)}
                   >
@@ -555,7 +560,11 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                                 className="fixed inset-0 z-20"
                                 onClick={() => setActiveMenuId(null)}
                               />
-                              <div className="absolute right-0 mt-1 w-44 bg-white rounded-lg shadow-lg border border-slate-200 z-30 py-1 text-left text-xs divide-y divide-slate-100">
+                              <div
+                                className={`absolute right-0 w-44 bg-white rounded-lg shadow-xl border border-slate-200 z-40 py-1 text-left text-xs divide-y divide-slate-100 ${
+                                  isNearBottom ? 'bottom-full mb-1.5' : 'top-full mt-1.5'
+                                }`}
+                              >
                                 <div>
                                   <button
                                     onClick={() => {
@@ -603,7 +612,8 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>
@@ -643,32 +653,24 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
             </FormField>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Category" required>
-                <Select
+              <FormField label="Category" required helperText="Select a school preset or type custom">
+                <AutocompleteInput
                   value={editForm.category}
-                  onChange={(e) => setEditForm({ ...editForm, category: e.target.value as any })}
-                >
-                  <option value="Balances & Scales">Balances & Scales</option>
-                  <option value="Spectroscopy">Spectroscopy</option>
-                  <option value="Centrifuges">Centrifuges</option>
-                  <option value="Electrochemistry">Electrochemistry</option>
-                  <option value="Chromatography">Chromatography</option>
-                  <option value="Thermal & Environmental">Thermal & Environmental</option>
-                  <option value="Sterilization">Sterilization</option>
-                </Select>
+                  onChange={(val) => setEditForm({ ...editForm, category: val as any })}
+                  options={Array.from(new Set([...SCHOOL_COLLEGE_CATEGORIES, ...equipmentList.map((e) => e.category)]))}
+                  placeholder="e.g. Measurement & Metrology..."
+                  emptyCustomHint="Use custom category"
+                />
               </FormField>
 
-              <FormField label="Department" required>
-                <Select
+              <FormField label="Department" required helperText="Select a school lab or type custom">
+                <AutocompleteInput
                   value={editForm.department}
-                  onChange={(e) => setEditForm({ ...editForm, department: e.target.value as any })}
-                >
-                  <option value="Analytical Chemistry">Analytical Chemistry</option>
-                  <option value="Quality Control">Quality Control</option>
-                  <option value="Bioassay">Bioassay</option>
-                  <option value="Microbiology">Microbiology</option>
-                  <option value="R&D Formulation">R&D Formulation</option>
-                </Select>
+                  onChange={(val) => setEditForm({ ...editForm, department: val as any })}
+                  options={Array.from(new Set([...SCHOOL_COLLEGE_DEPARTMENTS, ...equipmentList.map((e) => e.department)]))}
+                  placeholder="e.g. Physics Lab, Chemistry Lab..."
+                  emptyCustomHint="Use custom department"
+                />
               </FormField>
             </div>
 

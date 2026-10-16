@@ -61,7 +61,48 @@ def create_new_equipment(
     Registers new laboratory equipment.
     SECURITY: Requires authenticated staff (TECHNICIAN or ADMIN).
     """
-    return create_equipment(db, equip_in, user_id=current_user.id)
+@router.post("/bulk-import", status_code=status.HTTP_200_OK)
+def bulk_import_equipment(
+    payload: dict,
+    current_user: Optional[User] = Depends(require_staff),
+    db: Session = Depends(get_db),
+):
+    """
+    Bulk imports equipment items, skipping duplicates and returning import summary.
+    """
+    raw_items = payload.get("items", []) if isinstance(payload, dict) else payload
+    if not isinstance(raw_items, list):
+        raw_items = []
+
+    imported = []
+    skipped = []
+
+    for item in raw_items:
+        try:
+            eq_code = item.get("equipment_code") or item.get("code")
+            if not eq_code:
+                skipped.append({"equipment_code": "N/A", "name": item.get("name", "Unknown"), "reason": "Missing equipment code"})
+                continue
+
+            existing = get_equipment_by_id(db, eq_code)
+            if existing:
+                skipped.append({"equipment_code": eq_code, "name": item.get("name", ""), "reason": f"Equipment code '{eq_code}' already exists"})
+                continue
+
+            equip_schema = EquipmentCreate(**item)
+            created = create_equipment(db, equip_schema, user_id=current_user.id if current_user else None)
+            imported.append(created)
+        except Exception as e:
+            skipped.append({"equipment_code": item.get("equipment_code", "Unknown"), "name": item.get("name", ""), "reason": str(e)})
+
+    return {
+        "success": True,
+        "totalProcessed": len(raw_items),
+        "importedCount": len(imported),
+        "skippedCount": len(skipped),
+        "createdItems": imported,
+        "skippedItems": skipped,
+    }
 
 @router.get("/{equipment_id}", response_model=EquipmentResponse)
 def get_single_equipment(

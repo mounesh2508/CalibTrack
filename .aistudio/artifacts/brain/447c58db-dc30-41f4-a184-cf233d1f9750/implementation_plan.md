@@ -1,80 +1,111 @@
-# Implementation Plan: Fix React Duplicate Keys & Update Administrator Credentials
+# Implementation Plan: School & College Laboratory Presets with Custom Autocomplete Input
 
-Resolve the React runtime warning regarding duplicate/undefined keys across dashboard and list views, and apply the requested administrator account credentials (`asokanmounesh@gmail.com` / `a.MOUNESH14`) with display name `Mounesh A`.
-
-## Root Cause Analysis (Duplicate Key Error)
-
-- In `src/services/api.ts`, the dashboard summary maps `upcoming_calibrations` items to objects with keys `equipmentId`, `equipmentCode`, and `equipmentName`.
-- When `DashboardPage.tsx` falls back to `mapBackendEquipmentToFrontend(u)` for upcoming items, `mapBackendEquipmentToFrontend` checks `item.id || item.equipment_code || item.code`. None of these three exist on `u` (which uses `equipmentId` / `equipmentCode`), evaluating to `undefined` and yielding `id: "undefined"`.
-- When two or more upcoming calibration records are mapped, both receive `id: "undefined"`, causing `<tr key={eq.id}>` in `DashboardPage.tsx` to mount multiple children with the identical key `"undefined"`.
-- Similar potential key collisions exist in `EquipmentListPage.tsx` (`categories` and `locations` arrays derived without filtering undefined/falsy values before mapping `<option key={c}>`) and unindexed keys across `Header.tsx`, `CalibrationPage.tsx`, and `NotificationsPage.tsx`.
-
-## Proposed Changes
-
-### 1. Fix React Key Uniqueness & API Normalizers
-
-#### [src/services/api.ts]
-- Update `mapBackendEquipmentToFrontend`:
-  - Enhance ID resolution to support `item.id || item.equipmentId || item.equipment_id || item.equipmentCode || item.equipment_code || item.code || `EQ-${Date.now()}-${Math.random().toString(36).substring(2, 7)}``.
-  - Ensure fallback code and name correctly resolve from camelCase properties (`equipmentCode`, `equipmentName`).
-- Update dashboard summary normalizer:
-  - Ensure each item in `upcomingCalibrations` and `recentCalibrationRecords` has a guaranteed unique `id` and `equipmentId`.
-
-#### [src/pages/DashboardPage.tsx]
-- In `upcomingEquipment` table row rendering:
-  - Use resilient compound key: `key={eq.id ? `${eq.id}-${idx}` : `upcoming-${idx}`}`.
-- In `recentActivitiesList` mapping and rendering:
-  - Use compound key: `key={act.id ? `${act.id}-${idx}` : `act-${idx}`}`.
-
-#### [src/pages/EquipmentListPage.tsx]
-- In `categories` and `locations` useMemo:
-  - Filter out undefined/falsy values before constructing sets: `.map((e) => e.category).filter(Boolean)`.
-  - Provide distinct keys for option items: `<option key={`cat-${c || idx}`} value={c}>`.
-  - In table row mapping, use `key={eq.id ? `${eq.id}-${idx}` : `eq-${idx}`}`.
-
-#### [src/components/layout/Header.tsx] & [src/pages/NotificationsPage.tsx]
-- Guard notification and search result loops with fallback indices:
-  - `key={n.id ? `${n.id}-${idx}` : `notif-${idx}`}`.
-  - `key={eq.id ? `${eq.id}-${idx}` : `search-${idx}`}`.
-
-#### [src/pages/CalibrationPage.tsx] & [src/pages/CalendarPage.tsx]
-- Guard table rows and select options:
-  - `key={rec.id ? `${rec.id}-${idx}` : `rec-${idx}`}`.
-  - `key={eq.id ? `${eq.id}-${idx}` : `eq-opt-${idx}`}`.
-  - `key={evt.id ? `${evt.id}-${idx}` : `evt-${idx}`}`.
+Update the equipment category and laboratory department configurations throughout the application to suit academic school and college laboratories (Physics, Chemistry, Biology, Computer Science, and Engineering Labs), and provide direct text typing with an autocomplete dropdown suggestion list for arbitrary custom inputs.
 
 ---
 
-### 2. Administrator Credentials & Login Configuration
+## 1. Requirement & User Clarification Summary
 
-#### [server/database/config.ts]
-- Update the default administrator seed user (`usr-admin-01`):
-  - **Name**: `Mounesh A`
-  - **Email**: `asokanmounesh@gmail.com`
-  - **Password**: `a.MOUNESH14` (stored with direct comparison support)
-  - **Role**: `ADMIN`
+- **Academic Presets**: Preload standard school and college laboratory departments:
+  - Physics Lab
+  - Chemistry Lab
+  - Biology Lab
+  - Computer Science Lab
+  - Engineering & Robotics Lab
+  - General Science Lab
+  - Mathematics & Instrumentation Lab
+- **Equipment Categories tailored for Academic Labs**:
+  - Optical Instruments (Microscopes, Telescopes, Spectrometers, Prisms)
+  - Measurement & Metrology (Balances, Vernier Calipers, Screw Gauges, Meter Rules)
+  - Electrical & Electronics (Oscilloscopes, Multimeters, Power Supplies, Signal Generators)
+  - Thermal & Heating (Bunsen Burners, Water Baths, Hot Plates, Incubators, Autoclaves)
+  - Chemical & Glassware Apparatus (Burettes, Pipettes, Titration Units, Centrifuges)
+  - Biological & Specimen Equipment (Centrifuges, Dissection Kits, Hemocytometers)
+  - Computing & Robotics Hardware (Microcontrollers, Sensor Kits, Workstations, 3D Printers)
+  - General Laboratory Apparatus
+- **Custom Input Option**:
+  - Replace rigid select dropdowns with an **autocomplete combobox input component**.
+  - Users can either pick from the school/college suggestion list or type **any custom value** directly into the field.
+- **Scope**:
+  - Apply to both **Register New Equipment** (`AddEquipmentPage.tsx`) and **Edit Equipment Metadata Modal** (`EquipmentListPage.tsx`), and support custom categories in registry filters and CSV import.
 
-#### [server/routes/auth.routes.ts]
-- In `/api/auth/login`:
-  - Recognize `asokanmounesh@gmail.com` and password `a.MOUNESH14`, returning valid administrator session and JWT with `ADMIN` role.
-- In `/api/auth/me`:
-  - Return `asokanmounesh@gmail.com` with `Mounesh A` and `ADMIN` role as default admin profile.
-- In `/api/auth/forgot-password`:
-  - Include `asokanmounesh@gmail.com` in demo/admin recognized list for OTP generation.
+---
 
-#### [src/pages/LoginPage.tsx]
-- Update default form inputs:
-  - Email: `asokanmounesh@gmail.com`
-  - Password: `a.MOUNESH14`
-- Update the login hints section and role chips to display `asokanmounesh@gmail.com` and `a.MOUNESH14`.
+## 2. Proposed Architectural Changes
 
-## Verification Plan
+### A. TypeScript Type Definitions (`src/types/index.ts`)
+- Update `Equipment['category']` and `Equipment['department']` from rigid industrial pharmaceutical unions to flexible string types supporting academic presets while allowing arbitrary custom strings:
+  ```ts
+  export type AcademicDepartment =
+    | 'Physics Lab'
+    | 'Chemistry Lab'
+    | 'Biology Lab'
+    | 'Computer Science Lab'
+    | 'Engineering & Robotics Lab'
+    | 'General Science Lab'
+    | (string & {});
+
+  export type AcademicCategory =
+    | 'Measurement & Metrology'
+    | 'Optical Instruments'
+    | 'Electrical & Electronics'
+    | 'Thermal & Heating'
+    | 'Chemical & Glassware Apparatus'
+    | 'Biological & Specimen Equipment'
+    | 'Computing & Robotics Hardware'
+    | 'General Laboratory Apparatus'
+    | (string & {});
+  ```
+
+---
+
+### B. Shared Autocomplete Combobox Component (`src/components/common/AutocompleteInput.tsx`)
+- Build a lightweight, accessible combobox input:
+  - Renders a styled input with a dropdown chevron button.
+  - As the user types, filters suggestions in real time.
+  - Clicking the input or dropdown chevron reveals the school/college suggestion list.
+  - Clicking a suggestion selects it immediately.
+  - Allows typing any custom string freely (no lock-in).
+  - Outside click closes the suggestion panel.
+
+---
+
+### C. Update Register New Equipment Form (`src/pages/AddEquipmentPage.tsx`)
+- Update initial state defaults:
+  - `department`: `'Physics Lab'`
+  - `category`: `'Measurement & Metrology'`
+- Replace rigid `<Select>` with `<AutocompleteInput>` for both **Equipment Category** and **Laboratory Department**.
+- Provide pre-populated school & college presets list with a "Custom" label hint.
+
+---
+
+### D. Update Edit Equipment Modal (`src/pages/EquipmentListPage.tsx`)
+- Replace the static `<Select>` options in the Edit Metadata Modal with `<AutocompleteInput>` for Category and Department.
+- Ensure existing equipment with legacy or custom categories load and edit without breaking.
+
+---
+
+### E. Registry Filters & CSV Import Verification
+- In `EquipmentListPage.tsx`, ensure filter dropdowns combine preloaded academic categories/departments with any newly registered custom categories from the active equipment list.
+- In `src/utils/csvEquipmentParser.ts`, ensure CSV import accepts any custom academic department or category without validation rejection.
+
+---
+
+## 3. Verification Plan
 
 ### Automated Verification
-- Run `compile_applet` to verify TypeScript compilation and zero build errors.
+- Run `lint_applet` (`tsc --noEmit`) to verify zero TypeScript errors.
+- Run `compile_applet` to ensure successful bundle compilation.
 
 ### Manual Verification
-- Verify browser console produces zero `Encountered two children with the same key` warnings when navigating across Dashboard, Equipment, Calibration, Calendar, and Notifications pages.
-- Log in with `asokanmounesh@gmail.com` and `a.MOUNESH14`.
-- Confirm header displays `Mounesh A` with full administrator permissions.
-- Test equipment filter dropdowns to verify clean option rendering with zero warnings.
+1. **New Equipment Registration**:
+   - Navigate to `/equipment/new`.
+   - Verify category and department fields display academic options (Physics Lab, Chemistry Lab, etc.).
+   - Type a custom category (e.g., "Photonics & Laser Lab" or "Robotics Kit") and a custom department (e.g., "Advanced Mechatronics").
+   - Submit the form and verify the new instrument is registered with the custom category and department.
+2. **Edit Equipment Modal**:
+   - In Equipment Registry, click **Actions -> Edit Metadata** on any instrument.
+   - Verify the autocomplete dropdown suggestions show school/college presets.
+   - Enter a custom value and save. Verify the table reflects the updated custom value immediately.
+3. **Filter Test**:
+   - In Equipment Registry, verify category and department filter dropdowns include both preset academic categories and user-created custom categories.

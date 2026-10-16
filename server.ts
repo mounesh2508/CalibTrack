@@ -73,6 +73,11 @@ async function startServer() {
     const [pathname, search] = rawPath.split('?');
     const queryString = search ? `?${search}` : '';
 
+    // Route bulk-import and users directly to Express router
+    if (pathname === '/api/equipment/bulk-import' || pathname.startsWith('/api/users')) {
+      return apiRouter(req, res, next);
+    }
+
     const headers: http.OutgoingHttpHeaders = { ...req.headers };
     headers.host = `${fastApiTarget.hostname}:${fastApiTarget.port || 8001}`;
     // Remove hop-by-hop headers that can interfere with proxy connection

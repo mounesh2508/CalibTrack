@@ -2,16 +2,36 @@ export type EquipmentStatus = 'calibrated' | 'due_soon' | 'overdue' | 'maintenan
 
 export type CalibrationResult = 'Passed' | 'Passed with Adjustment' | 'Failed' | 'Limited Use';
 
+export type AcademicCategory =
+  | 'Measurement & Metrology'
+  | 'Optical Instruments'
+  | 'Electrical & Electronics'
+  | 'Thermal & Heating'
+  | 'Chemical & Glassware Apparatus'
+  | 'Biological & Specimen Equipment'
+  | 'Computing & Robotics Hardware'
+  | 'General Laboratory Apparatus'
+  | (string & {});
+
+export type AcademicDepartment =
+  | 'Physics Lab'
+  | 'Chemistry Lab'
+  | 'Biology Lab'
+  | 'Computer Science Lab'
+  | 'Engineering & Robotics Lab'
+  | 'General Science Lab'
+  | (string & {});
+
 export interface Equipment {
   id: string;
   code: string;
   name: string;
-  category: 'Balances & Scales' | 'Spectroscopy' | 'Centrifuges' | 'Electrochemistry' | 'Thermal & Environmental' | 'Chromatography' | 'Sterilization';
+  category: AcademicCategory;
   manufacturer: string;
   model: string;
   serialNumber: string;
-  department: 'Analytical Chemistry' | 'Microbiology' | 'Quality Control' | 'R&D Formulation' | 'Bioassay';
-  location: string; // e.g. "Lab 3B - Bench 4"
+  department: AcademicDepartment;
+  location: string; // e.g. "Physics Lab - Room 204"
   purchaseDate: string;
   calibrationIntervalMonths: number;
   lastCalibrationDate: string;

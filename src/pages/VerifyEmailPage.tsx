@@ -69,10 +69,7 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigate }) 
 
     try {
       const res = await api.resendCode(resendEmail.trim(), 'REGISTRATION');
-      let msg = res.message || 'Verification code sent. Please check your inbox.';
-      if (res.simulation && res.simulation.otp_code) {
-        msg += ` (Gmail Test Preview: ${res.simulation.otp_code})`;
-      }
+      const msg = res.message || 'Verification code sent. Please check your inbox.';
       setResendNotice(msg);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to resend verification code.');

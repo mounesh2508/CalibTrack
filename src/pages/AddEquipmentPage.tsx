@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ArrowLeft, Save, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
+import { AutocompleteInput } from '../components/common/AutocompleteInput';
+import { SCHOOL_COLLEGE_CATEGORIES, SCHOOL_COLLEGE_DEPARTMENTS } from '../constants/schoolLabPresets';
 import { Equipment } from '../types';
 import { api } from '../services/api';
 
@@ -17,11 +19,11 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     code: `EQ-2026-${String(Math.floor(Math.random() * 900) + 100)}`,
-    category: 'Balances & Scales' as Equipment['category'],
+    category: 'Measurement & Metrology' as Equipment['category'],
     manufacturer: '',
     model: '',
     serialNumber: '',
-    department: 'Analytical Chemistry' as Equipment['department'],
+    department: 'Physics Lab' as Equipment['department'],
     location: '',
     purchaseDate: '2026-01-15',
     calibrationIntervalMonths: 6,
@@ -40,6 +42,8 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
     const newErrors: Record<string, string> = {};
     if (!formData.name.trim()) newErrors.name = 'Equipment name is required.';
     if (!formData.code.trim()) newErrors.code = 'Equipment code is required.';
+    if (!formData.category.trim()) newErrors.category = 'Equipment category is required.';
+    if (!formData.department.trim()) newErrors.department = 'Laboratory department is required.';
     if (!formData.manufacturer.trim()) newErrors.manufacturer = 'Manufacturer is required.';
     if (!formData.model.trim()) newErrors.model = 'Model number is required.';
     if (!formData.serialNumber.trim()) newErrors.serialNumber = 'Serial number is required.';
@@ -162,32 +166,40 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
               />
             </FormField>
 
-            <FormField label="Equipment Category" required>
-              <Select
+            <FormField
+              label="Equipment Category"
+              error={errors.category}
+              helperText="Select a school/college preset or type any custom category"
+              required
+            >
+              <AutocompleteInput
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-              >
-                <option value="Balances & Scales">Balances & Scales</option>
-                <option value="Spectroscopy">Spectroscopy</option>
-                <option value="Centrifuges">Centrifuges</option>
-                <option value="Electrochemistry">Electrochemistry</option>
-                <option value="Chromatography">Chromatography</option>
-                <option value="Thermal & Environmental">Thermal & Environmental</option>
-                <option value="Sterilization">Sterilization</option>
-              </Select>
+                onChange={(val) => {
+                  setFormData({ ...formData, category: val as any });
+                  if (errors.category) setErrors({ ...errors, category: '' });
+                }}
+                options={SCHOOL_COLLEGE_CATEGORIES}
+                placeholder="e.g. Measurement & Metrology, Optical Instruments..."
+                emptyCustomHint="Use custom category"
+              />
             </FormField>
 
-            <FormField label="Laboratory Department" required>
-              <Select
+            <FormField
+              label="Laboratory Department"
+              error={errors.department}
+              helperText="Select a school/college lab or type any custom department"
+              required
+            >
+              <AutocompleteInput
                 value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value as any })}
-              >
-                <option value="Analytical Chemistry">Analytical Chemistry</option>
-                <option value="Quality Control">Quality Control</option>
-                <option value="Bioassay">Bioassay</option>
-                <option value="Microbiology">Microbiology</option>
-                <option value="R&D Formulation">R&D Formulation</option>
-              </Select>
+                onChange={(val) => {
+                  setFormData({ ...formData, department: val as any });
+                  if (errors.department) setErrors({ ...errors, department: '' });
+                }}
+                options={SCHOOL_COLLEGE_DEPARTMENTS}
+                placeholder="e.g. Physics Lab, Chemistry Lab, Biology Lab..."
+                emptyCustomHint="Use custom department"
+              />
             </FormField>
           </div>
         </div>

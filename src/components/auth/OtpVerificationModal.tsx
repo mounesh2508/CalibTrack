@@ -236,30 +236,6 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
           </p>
         </div>
 
-        {/* In-App Test Preview Drawer */}
-        {activePreviewCode && (
-          <div className="mx-6 mt-4 p-3 bg-indigo-50/90 border border-indigo-200/80 rounded-xl flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
-              <div>
-                <span className="font-semibold text-indigo-900 block text-[11px]">
-                  Gmail In-App Preview (Test Mode)
-                </span>
-                <span className="font-mono text-sm font-bold text-indigo-700 tracking-wider">
-                  {activePreviewCode}
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleAutoFill}
-              className="px-2.5 py-1 text-[11px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors shadow-xs"
-            >
-              Auto-Fill & Verify
-            </button>
-          </div>
-        )}
-
         {/* Modal Body */}
         <div className="p-6 space-y-5">
           {error && (
