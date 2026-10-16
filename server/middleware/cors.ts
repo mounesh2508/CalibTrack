@@ -1,37 +1,11 @@
 import cors from 'cors';
 
-const isProduction = process.env.NODE_ENV === 'production';
-
-// In development or preview, accept same-origin and AI Studio dev ports
-const allowedOrigins = [
-  process.env.APP_URL,
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5173',
-].filter(Boolean) as string[];
-
+/**
+ * Universal CORS middleware for CalibTrack API
+ * Allows cross-origin requests from any client origin (Vercel domains, localhost, custom domains)
+ */
 export const corsMiddleware = cors({
-  origin: (origin, callback) => {
-    // Allow non-browser tools, curl, or same-origin requests where origin is undefined
-    if (!origin) return callback(null, true);
-
-    if (!isProduction) {
-      // In development allow local origins or AI Studio domains
-      return callback(null, true);
-    }
-
-    const frontendUrl = process.env.FRONTEND_URL;
-    if (
-      allowedOrigins.includes(origin) ||
-      (frontendUrl && origin === frontendUrl) ||
-      origin.endsWith('.run.app') ||
-      origin.endsWith('.vercel.app')
-    ) {
-      return callback(null, true);
-    }
-
-    return callback(new Error(`Origin ${origin} not allowed by CORS`));
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
