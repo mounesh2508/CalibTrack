@@ -1,6 +1,6 @@
 import { getPool, isFallback, memoryStore } from '../database/config';
 import { DashboardSummary, EquipmentEntity } from '../models';
-import { equipmentService } from './equipment.service';
+import { equipmentService, toIsoDateStr } from './equipment.service';
 import { calibrationService } from './calibration.service';
 
 export class DashboardService {
@@ -19,8 +19,9 @@ export class DashboardService {
       let daysRemaining = 999;
       let status = eq.status || 'CALIBRATED';
 
-      if (eq.next_calibration_date) {
-        const match = eq.next_calibration_date.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      const nextDateStr = toIsoDateStr(eq.next_calibration_date);
+      if (nextDateStr) {
+        const match = nextDateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
         if (match) {
           const y = parseInt(match[1], 10);
           const m = parseInt(match[2], 10) - 1;

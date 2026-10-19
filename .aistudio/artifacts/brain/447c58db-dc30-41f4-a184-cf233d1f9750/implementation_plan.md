@@ -1,68 +1,49 @@
-# ML Calibration Interval Recommendation Engine
+# Vercel Deployment Readiness & End-to-End Verification Plan
 
-Predict and recommend optimal laboratory calibration intervals using an adaptive regression model with drift reliability scoring based on historical calibration records, instrument age, and environmental stability.
+Prepare CalibTrack for production deployment on Vercel with external PostgreSQL / MySQL database connectivity, serverless API optimizations, automated end-to-end test verification, and complete deployment configuration.
 
 ---
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural and user experience decisions have been aligned based on your specifications:
-> - **Input Factors**: The model analyzes **historical calibration records** (pass rate, adjustments, drift), **instrument age** (years since acquisition/commissioning), and **ambient environmental stability** (temperature and humidity variance).
-> - **Surface Placement**: Recommendations appear directly embedded within the **Add Instrument form**, the **Edit Equipment modal**, and the **Equipment Details page** (with full factor explanation, confidence level, and 1-click application).
-> - **Model Approach**: An **adaptive regression model with drift reliability scoring**, bounded by ISO 17025 laboratory safeguards (30-day minimum, 365-day maximum).
+> The following decisions have been confirmed for the Vercel deployment:
+> - **Database Architecture**: Full support for **external PostgreSQL** (Supabase, Neon, Vercel Postgres) and **MySQL** (PlanetScale, Aiven, RDS), with an automated fallback to the in-memory laboratory store if credentials are missing or temporarily unreachable, preventing any serverless crashes.
+> - **Testing Scope**: A **full end-to-end test suite** validating the production Vite build, TypeScript type integrity, serverless route handlers, and ML prediction endpoints.
 
 ---
 
 ## 1. Overview & Core Concept
 
-- **What It Does**: Replaces static, arbitrary 6-month or 12-month calibration cycles with dynamic, data-driven interval recommendations tailored to each individual instrument's actual reliability record, age, and operating conditions.
-- **Target Persona**: Metrology Supervisors, Laboratory Technicians, and Academic Lab Custodians maintaining physics, chemistry, biology, and engineering laboratory apparatus.
+- **What It Does**: Hardens CalibTrack for seamless one-click Vercel deployment, allowing the application to operate as a high-performance static frontend powered by serverless backend endpoints with resilient database pooling.
+- **Target Persona**: Lab Administrators and Metrology Teams deploying CalibTrack into production environments.
 - **Key Value**:
-  - **Reduces Unnecessary Downtime**: Extends intervals for highly stable, pristine instruments (e.g. from 6 months to 9 or 12 months) backed by quantitative proof.
-  - **Prevents Out-of-Tolerance Failures**: Automatically tightens intervals (e.g. from 12 months to 3 or 6 months) for aging, drifting, or environmentally stressed instruments before failures occur.
-  - **Defensible Compliance**: Provides an auditable mathematical rationale with reliability scores and factor weightings aligned with ISO 17025 recommendations.
+  - **Zero Serverless Failures**: Handles cold starts, connection pooling timeouts, and database disconnects gracefully.
+  - **Dual Database Flexibility**: Supports standard connection strings for both PostgreSQL (`postgres://` / `postgresql://`) and MySQL (`mysql://`).
+  - **Verified Production Bundle**: Ensures error-free static compilation and valid client routing.
 
 ---
 
 ## 2. User Experience & Visual Design
 
-Following the **Universal Frontend Design Constitution** and **Science, Space & Biotech** guidelines:
-
-### A. Add Instrument Screen (`src/pages/AddEquipmentPage.tsx`)
-- Inside **Section 3: Calibration Schedule & Metrology Specs**:
-  - Beside the manual interval selector, display an inline **ML Recommended Interval** assistant.
-  - As the user enters category, department, and purchase date, the model computes a baseline recommended interval in real time.
-  - Provides a single-click button: `"Apply ML Recommendation"` to automatically populate the interval field.
-
-### B. Equipment Details Screen (`src/pages/EquipmentDetailsPage.tsx`)
-- In the right-hand inspection column, add an **ML Calibration Interval Recommendation & Reliability Analysis** card:
-  - **Current Interval vs. Recommended Interval**: Side-by-side comparison with net difference (`+3 months` or `-3 months`).
-  - **Empirical Reliability Score**: Formatted with tabular monospace precision (e.g., `94.5% High Stability`).
-  - **Factor Weighting Breakdown**:
-    - *Historical Calibration Drift*: Track records of passed vs. adjusted vs. failed calibrations.
-    - *Environmental Stability*: Temperature & relative humidity fluctuation penalties.
-    - *Equipment Aging & Wear Curve*: Depreciation curve based on years in service.
-  - **One-Click Apply Action**: `"Update Interval to Recommended"`, which recalculates the next calibration date and updates the database immediately.
-
-### C. Quick Edit Modal (`src/pages/EquipmentListPage.tsx`)
-- When editing any existing instrument, an unobtrusive recommendation callout highlights whether the instrument is currently over-calibrated or at risk, allowing technicians to adopt the recommended interval instantly.
-
-### D. Visual Restraint & Typography
-- Clean unboxed metadata with `·` separators (strictly no static pill badges).
-- Tabular monospace numbers (`font-mono tabular-nums`) for percentages, variances, and day intervals.
-- Non-hue-only status reporting (`● High Stability`, `▲ Moderate Drift`, `✖ Critical Wear`).
+- **Status & Health Monitoring**:
+  - The application dashboard and settings automatically report live database connection health (e.g. `PostgreSQL Pool Connected`, `MySQL Connected`, or `Resilient Lab Store Active`).
+- **Smooth SPA Routing on Vercel**:
+  - Clean client-side navigation between `/dashboard`, `/equipment`, `/calibration`, `/reports`, `/calendar`, and `/settings` without 404s on page refresh via `vercel.json` rewrite rules.
+- **Instant Response Times**:
+  - Serverless cold-start mitigation with cached database initialization promises and streamlined asset delivery.
 
 ---
 
 ## 3. Key Product Decisions & Trade-Offs
 
-- **Decision 1: Dual Client/Server Architecture**:
-  - *Chosen Approach*: Encapsulate the core mathematical ML model in a shared TypeScript metrology engine (`src/utils/calibrationIntervalMl.ts` and `server/services/mlInterval.service.ts`).
-  - *Why*: Delivers zero-latency, reactive feedback in the browser during form data entry, while also exposing a dedicated serverless REST endpoint (`GET /api/equipment/:id/recommended-interval` and `POST /api/equipment/:id/apply-interval`) for persistent audit trails.
-- **Decision 2: Clamped ISO 17025 Boundaries**:
-  - *Chosen Approach*: Clamp all generated interval recommendations between 30 days (1 month) and 365 days (12 months), snapping to standard operational intervals (1, 3, 6, 9, 12 months) with fractional day precision.
-  - *Why*: Metrology laboratories operate on standard inspection windows; unconstrained models recommending e.g. 73 days disrupt operational calibration vendor contracts.
+- **Decision 1: Universal PostgreSQL & MySQL Connection Driver**:
+  - *Chosen Approach*: Support both `pg` (PostgreSQL) and `mysql2` (MySQL) connection strings through a unified database client adapter in `server/database/config.ts`.
+  - *Why*: Gives users complete freedom to plug in any hosted database (Supabase, Neon, AWS RDS, PlanetScale) by just setting `DATABASE_URL` in Vercel environment variables.
+- **Decision 2: Serverless Connection Pooling Limits**:
+  - *Chosen Approach*: Enforce max connection pool size (`connectionLimit: 1` to `5`) suited for serverless microVM environments to prevent exhausting database connection pools under concurrent lambdas.
+- **Decision 3: Standalone Automated Test Runner**:
+  - *Chosen Approach*: Create `scripts/test-e2e.ts` that boots and tests all REST routes, ML prediction endpoints, and verify `npm run build` synchronously before deployment.
 
 ---
 
@@ -70,51 +51,54 @@ Following the **Universal Frontend Design Constitution** and **Science, Space & 
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        Input Feature Vectors                           │
-│  - Historical Calibration Records (Passed, Adjusted, Failed)           │
-│  - Instrument Age (Commissioning / Purchase Date to Current Date)      │
-│  - Environmental Conditions (Ambient Temp °C & Humidity %RH Variance)  │
-│  - Metrological Category Baselines (Physics, Chemistry, Metrology)     │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│               ML Adaptive Regression & Drift Scoring Engine            │
+│                        Vercel Deployment Model                         │
 │                                                                        │
-│  1. Reliability Score R_hist = (1.0 * passed + 0.5 * adj + 0 * fail)  │
-│  2. Drift Factor D = exp(-drift_penalty * consecutive_adjustments)     │
-│  3. Age Decay Factor A = max(0.65, 1.0 - 0.04 * age_in_years)         │
-│  4. Environmental Stress E = max(0.70, 1.0 - (temp_var + rh_var))     │
-│                                                                        │
-│  Predicted Days = BaseIntervalDays * R_hist * D * A * E                │
-│  Clamped Interval: [30 days, 365 days] -> Nearest Optimal Month Preset │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼                                   ▼
-┌───────────────────────────────────┐ ┌──────────────────────────────────┐
-│      Client-Side Components       │ │      Backend REST Endpoints      │
-│ - AddEquipmentPage: Live ML Hint  │ │ - GET  /api/equipment/:id/       │
-│ - EquipmentDetailsPage: Analysis  │ │        recommended-interval      │
-│ - EquipmentListPage: Edit Modal   │ │ - POST /api/equipment/:id/       │
-│ - StatusBadge & Trend Indicators  │ │        apply-interval            │
-└───────────────────────────────────┘ └──────────────────────────────────┘
+│   ┌───────────────────────────┐    ┌────────────────────────────────┐  │
+│   │    Static Client SPA      │    │    Serverless API Function     │  │
+│   │  (Vite Build -> dist/)    │    │      (api/index.ts)            │  │
+│   │   - React 19 Frontend     │    │   - Express 4.x Sub-App        │  │
+│   │   - Tailwind CSS v4       │    │   - ML Recommendation Engine   │  │
+│   │   - Static Asset Cache    │    │   - Auth & Reminder Dispatch   │  │
+│   └─────────────┬─────────────┘    └───────────────┬────────────────┘  │
+│                 │                                  │                   │
+│                 ▼                                  ▼                   │
+│   ┌────────────────────────────────────────────────────────────────┐   │
+│   │               vercel.json Rewrites & Headers                   │   │
+│   │   /api/*  -> api/index.ts (Serverless Express Handler)         │   │
+│   │   /*      -> /index.html (Client Single Page App Router)       │   │
+│   └────────────────────────────────┬───────────────────────────────┘   │
+└────────────────────────────────────┼───────────────────────────────────┘
+                                     │
+                 ┌───────────────────┴───────────────────┐
+                 ▼                                       ▼
+    ┌───────────────────────────┐           ┌───────────────────────────┐
+    │    External Database      │           │    Resilient In-Memory    │
+    │  - PostgreSQL / Supabase  │   (or)    │    Laboratory Store       │
+    │  - MySQL / PlanetScale    │           │  - 15 Instruments         │
+    │  (via DATABASE_URL)       │           │  - Full Audit History     │
+    └───────────────────────────┘           └───────────────────────────┘
 ```
 
 ---
 
 ## 5. Implementation Roadmap
 
-1. **ML Recommendation Engine (`src/utils/calibrationIntervalMl.ts`)**:
-   - Build pure TypeScript ML regression model taking calibration history, equipment age, and environmental parameters.
-   - Return recommended interval (days & months), reliability score (0-100%), confidence score, and explainability factors.
-2. **Backend API Endpoints (`server/routes/equipment.routes.ts` & `server/services/equipment.service.ts`)**:
-   - Expose `GET /api/equipment/:id/recommended-interval` computing prediction based on stored calibration records and equipment data.
-   - Expose `POST /api/equipment/:id/apply-interval` to update equipment interval, recalculate next calibration date, and log an audit notification.
-3. **Frontend Integration**:
-   - `AddEquipmentPage.tsx`: Add reactive ML recommendation preview with 1-click apply.
-   - `EquipmentDetailsPage.tsx`: Add comprehensive ML reliability & interval analysis card with factor breakdown.
-   - `EquipmentListPage.tsx`: Add recommended interval chip in quick edit modal.
-4. **Verification & Testing**:
-   - Automated unit tests covering diverse scenarios (brand new instrument, aging drifting instrument, pristine calibration history).
-   - Verify zero lint and compilation errors with `compile_applet`.
+1. **Universal Database Connectivity (`server/database/config.ts`)**:
+   - Add PostgreSQL support via `pg` connection pool alongside existing MySQL support.
+   - Detect protocol scheme (`postgres://`, `postgresql://`, `mysql://`) from `DATABASE_URL` or `POSTGRES_URL`.
+   - Maintain seamless in-memory fallback if credentials are absent or remote host is down.
+2. **Vercel Serverless Routing & Config (`vercel.json` & `api/index.ts`)**:
+   - Audit and refine `vercel.json` rewrites and cache control headers.
+   - Ensure `api/index.ts` safely resolves all routes with or without prefix stripping.
+3. **End-to-End Automated Test Suite (`scripts/test-e2e.ts`)**:
+   - Test `/api/dashboard/summary`
+   - Test `/api/equipment` (CRUD & filtering)
+   - Test `/api/equipment/:id/recommended-interval` (ML model)
+   - Test `/api/equipment/:id/apply-interval` (ML application)
+   - Test `/api/calibration-records`
+   - Test `/api/reminders/settings` & preview
+4. **Production Build & Type Check Verification**:
+   - Run `npm run build` to confirm client compilation.
+   - Run `npm run lint` (`tsc --noEmit`) to verify zero TypeScript errors.
+5. **Deployment Guide & Environment Sample (`.env.example` & `VERCEL_DEPLOYMENT.md`)**:
+   - Document step-by-step instructions for importing Git repo into Vercel and setting environment variables.

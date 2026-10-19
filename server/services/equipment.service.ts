@@ -9,14 +9,33 @@ export interface EquipmentFilterOptions {
   department?: string;
 }
 
+export function toIsoDateStr(val: any): string | null {
+  if (!val) return null;
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return null;
+    return val.toISOString().split('T')[0];
+  }
+  const s = String(val).trim();
+  const match = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (match) {
+    const y = match[1];
+    const m = match[2].padStart(2, '0');
+    const d = match[3].padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return s.split('T')[0] || null;
+}
+
 function normalizeEquipmentStatus(eq: EquipmentEntity): EquipmentEntity {
   const now = new Date();
   const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
   const interval = Number(eq.calibration_interval_days) || 180;
-  let nextDateStr = eq.next_calibration_date;
+  
+  const lastDateStr = toIsoDateStr(eq.last_calibration_date);
+  let nextDateStr = toIsoDateStr(eq.next_calibration_date);
 
-  if (!nextDateStr && eq.last_calibration_date) {
-    const match = eq.last_calibration_date.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (!nextDateStr && lastDateStr) {
+    const match = lastDateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (match) {
       const y = parseInt(match[1], 10);
       const m = parseInt(match[2], 10) - 1;
@@ -28,7 +47,7 @@ function normalizeEquipmentStatus(eq: EquipmentEntity): EquipmentEntity {
 
   let status: DbEquipmentStatus = 'CALIBRATED';
   if (nextDateStr) {
-    const match = nextDateStr.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    const match = nextDateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
     if (match) {
       const y = parseInt(match[1], 10);
       const m = parseInt(match[2], 10) - 1;
@@ -47,6 +66,7 @@ function normalizeEquipmentStatus(eq: EquipmentEntity): EquipmentEntity {
 
   return {
     ...eq,
+    last_calibration_date: lastDateStr || eq.last_calibration_date,
     next_calibration_date: nextDateStr || eq.next_calibration_date,
     status,
   };
@@ -180,8 +200,9 @@ export class EquipmentService {
     const today = new Date();
     const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
 
-    if (data.last_calibration_date) {
-      const match = data.last_calibration_date.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    const lastDateStr = toIsoDateStr(data.last_calibration_date);
+    if (lastDateStr) {
+      const match = lastDateStr.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
       if (match) {
         const y = parseInt(match[1], 10);
         const m = parseInt(match[2], 10) - 1;

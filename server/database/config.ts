@@ -1,4 +1,5 @@
-import mysql, { Pool, PoolOptions } from 'mysql2/promise';
+import mysql, { Pool as MySqlPool, PoolOptions as MySqlPoolOptions } from 'mysql2/promise';
+import { Pool as PgPool, PoolConfig as PgPoolConfig } from 'pg';
 import dotenv from 'dotenv';
 import {
   EquipmentEntity,
@@ -11,14 +12,20 @@ import {
 
 dotenv.config();
 
+export interface UniversalPool {
+  query<T = any>(sql: string, params?: any[]): Promise<[T, any]>;
+  execute?<T = any>(sql: string, params?: any[]): Promise<[T, any]>;
+  getConnection?(): Promise<any>;
+}
+
 export interface DbStatus {
   connected: boolean;
-  type: 'mysql' | 'memory-fallback';
+  type: 'mysql' | 'postgres' | 'memory-fallback';
   message: string;
   databaseName?: string;
 }
 
-let pool: Pool | null = null;
+let pool: any = null;
 let isUsingFallback = false;
 let dbStatus: DbStatus = {
   connected: false,
@@ -741,32 +748,73 @@ class MemoryStore {
 export const memoryStore = new MemoryStore();
 
 // =====================================================================
-// MySQL Connection Pool Initialization & Validation
+// Database Configuration Detectors (PostgreSQL & MySQL)
 // =====================================================================
-function getMySQLConfig() {
-  const rawUrl = process.env.MYSQL_DATABASE_URL || process.env.MYSQL_URL || process.env.DATABASE_URL;
+function getPostgresConfig() {
+  const rawUrl =
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.PGDATABASE_URL ||
+    (process.env.DATABASE_URL &&
+    (process.env.DATABASE_URL.startsWith('postgres://') ||
+      process.env.DATABASE_URL.startsWith('postgresql://'))
+      ? process.env.DATABASE_URL
+      : undefined);
 
-  // Validate if a valid MySQL URL is configured (must start with mysql:// and not contain template placeholders)
   if (rawUrl) {
-    const isMysqlUrl = rawUrl.startsWith('mysql://') || rawUrl.startsWith('mysql2://');
+    const hasPlaceholder =
+      rawUrl.includes('[') ||
+      rawUrl.includes('YOUR-PASSWORD') ||
+      rawUrl.includes('YOUR_PASSWORD');
+    if (!hasPlaceholder) {
+      return { type: 'url' as const, uri: rawUrl };
+    }
+  }
+
+  // Check discrete host/user/password variables for PostgreSQL
+  const host = process.env.PGHOST || (process.env.DB_HOST && (process.env.DB_HOST.includes('supabase') || process.env.DB_HOST.includes('postgres') || process.env.DB_HOST.includes('neon')) ? process.env.DB_HOST : undefined);
+  const user = process.env.PGUSER || (process.env.DB_USER && process.env.DB_USER.startsWith('postgres') ? process.env.DB_USER : undefined);
+  const password = process.env.PGPASSWORD || process.env.DB_PASSWORD;
+  const database = process.env.PGDATABASE || process.env.DB_NAME || 'calibtrack';
+  const port = parseInt(process.env.PGPORT || '5432', 10);
+
+  const hasPlaceholderPassword =
+    password &&
+    (password.includes('[') ||
+      password.includes('YOUR-PASSWORD') ||
+      password.includes('YOUR_PASSWORD'));
+
+  if (host && user && password && !hasPlaceholderPassword) {
+    return { type: 'params' as const, host, user, password, database, port };
+  }
+
+  return null;
+}
+
+function getMySQLConfig() {
+  const rawUrl = process.env.MYSQL_DATABASE_URL || process.env.MYSQL_URL || (process.env.DATABASE_URL && (process.env.DATABASE_URL.startsWith('mysql://') || process.env.DATABASE_URL.startsWith('mysql2://')) ? process.env.DATABASE_URL : undefined);
+
+  // Validate if a valid MySQL URL is configured
+  if (rawUrl) {
     const hasPlaceholder =
       rawUrl.includes('[') ||
       rawUrl.includes('YOUR-PASSWORD') ||
       rawUrl.includes('YOUR_PASSWORD') ||
       rawUrl.includes('MY_PASSWORD');
 
-    if (isMysqlUrl && !hasPlaceholder) {
+    if (!hasPlaceholder) {
       return { type: 'url' as const, uri: rawUrl };
     }
   }
 
   // Check discrete host/user/password variables
-  // Avoid picking up non-MySQL hosts (like PostgreSQL or Supabase poolers)
   const host =
     process.env.MYSQL_HOST ||
     (process.env.DB_HOST &&
     !process.env.DB_HOST.includes('supabase') &&
-    !process.env.DB_HOST.includes('postgres')
+    !process.env.DB_HOST.includes('postgres') &&
+    !process.env.DB_HOST.includes('neon')
       ? process.env.DB_HOST
       : undefined);
 
@@ -794,70 +842,135 @@ function getMySQLConfig() {
 }
 
 export async function initDatabase(): Promise<DbStatus> {
+  const pgConfig = getPostgresConfig();
   const mysqlConfig = getMySQLConfig();
 
-  if (!mysqlConfig) {
-    isUsingFallback = true;
-    dbStatus = {
-      connected: true,
-      type: 'memory-fallback',
-      message: 'Operating with persistent laboratory data store. (To connect an external MySQL instance, set a valid mysql:// DATABASE_URL in .env)',
-      databaseName: 'calibtrack_store',
-    };
-    console.log(`[Database] ${dbStatus.message}`);
-    return dbStatus;
-  }
+  // 1. Try PostgreSQL if configured
+  if (pgConfig) {
+    try {
+      const max = parseInt(process.env.DB_CONNECTION_LIMIT || '5', 10);
+      const pgPoolConfig: PgPoolConfig =
+        pgConfig.type === 'url'
+          ? {
+              connectionString: pgConfig.uri,
+              max,
+              connectionTimeoutMillis: 3500,
+              ssl: pgConfig.uri.includes('localhost') ? false : { rejectUnauthorized: false },
+            }
+          : {
+              host: pgConfig.host,
+              port: pgConfig.port,
+              user: pgConfig.user,
+              password: pgConfig.password,
+              database: pgConfig.database,
+              max,
+              connectionTimeoutMillis: 3500,
+              ssl: pgConfig.host.includes('localhost') ? false : { rejectUnauthorized: false },
+            };
 
-  try {
-    const connectionLimit = parseInt(process.env.DB_CONNECTION_LIMIT || '10', 10);
-    const poolConfig: PoolOptions =
-      mysqlConfig.type === 'url'
-        ? { uri: mysqlConfig.uri, connectionLimit, waitForConnections: true, connectTimeout: 3000 }
-        : {
-            host: mysqlConfig.host,
-            port: mysqlConfig.port,
-            user: mysqlConfig.user,
-            password: mysqlConfig.password,
-            database: mysqlConfig.database,
-            connectionLimit,
-            waitForConnections: true,
-            connectTimeout: 3000,
+      const pgPool = new PgPool(pgPoolConfig);
+      await pgPool.query('SELECT 1');
+
+      // Create compatibility adapter that translates '?' placeholders to '$1, $2, ...'
+      pool = {
+        async query(sql: string, params: any[] = []) {
+          let idx = 1;
+          const pgSql = sql.replace(/\?/g, () => `$${idx++}`);
+          const res = await pgPool.query(pgSql, params);
+          return [res.rows, res.fields];
+        },
+        async execute(sql: string, params: any[] = []) {
+          return this.query(sql, params);
+        },
+        async getConnection() {
+          const client = await pgPool.connect();
+          return {
+            async query(sql: string, params: any[] = []) {
+              let idx = 1;
+              const pgSql = sql.replace(/\?/g, () => `$${idx++}`);
+              const res = await client.query(pgSql, params);
+              return [res.rows, res.fields];
+            },
+            async ping() {
+              await client.query('SELECT 1');
+            },
+            release() {
+              client.release();
+            },
           };
+        },
+      };
 
-    pool = mysql.createPool(poolConfig);
-
-    // Test ping
-    const connection = await pool.getConnection();
-    await connection.ping();
-    connection.release();
-
-    isUsingFallback = false;
-    dbStatus = {
-      connected: true,
-      type: 'mysql',
-      message: 'Successfully connected to MySQL database pool',
-      databaseName: mysqlConfig.type === 'params' ? mysqlConfig.database : 'calibtrack',
-    };
-    console.log(`[Database] Connected to live MySQL database (${dbStatus.databaseName})`);
-    return dbStatus;
-  } catch (error: any) {
-    isUsingFallback = true;
-    dbStatus = {
-      connected: true,
-      type: 'memory-fallback',
-      message: `Operating with persistent laboratory data store (MySQL host unreachable: ${error.code || error.message})`,
-      databaseName: 'calibtrack_store',
-    };
-    console.log(`[Database] ${dbStatus.message}`);
-    return dbStatus;
+      isUsingFallback = false;
+      dbStatus = {
+        connected: true,
+        type: 'postgres',
+        message: 'Successfully connected to PostgreSQL database pool',
+        databaseName: pgConfig.type === 'params' ? pgConfig.database : 'calibtrack',
+      };
+      console.log(`[Database] Connected to live PostgreSQL database (${dbStatus.databaseName})`);
+      return dbStatus;
+    } catch (pgError: any) {
+      console.warn(`[Database] PostgreSQL connection failed: ${pgError.message}`);
+    }
   }
+
+  // 2. Try MySQL if configured
+  if (mysqlConfig) {
+    try {
+      const connectionLimit = parseInt(process.env.DB_CONNECTION_LIMIT || '5', 10);
+      const poolConfig: MySqlPoolOptions =
+        mysqlConfig.type === 'url'
+          ? { uri: mysqlConfig.uri, connectionLimit, waitForConnections: true, connectTimeout: 3000 }
+          : {
+              host: mysqlConfig.host,
+              port: mysqlConfig.port,
+              user: mysqlConfig.user,
+              password: mysqlConfig.password,
+              database: mysqlConfig.database,
+              connectionLimit,
+              waitForConnections: true,
+              connectTimeout: 3000,
+            };
+
+      pool = mysql.createPool(poolConfig);
+
+      // Test ping
+      const connection = await pool.getConnection();
+      await connection.ping();
+      connection.release();
+
+      isUsingFallback = false;
+      dbStatus = {
+        connected: true,
+        type: 'mysql',
+        message: 'Successfully connected to MySQL database pool',
+        databaseName: mysqlConfig.type === 'params' ? mysqlConfig.database : 'calibtrack',
+      };
+      console.log(`[Database] Connected to live MySQL database (${dbStatus.databaseName})`);
+      return dbStatus;
+    } catch (mysqlError: any) {
+      console.warn(`[Database] MySQL connection failed: ${mysqlError.message}`);
+    }
+  }
+
+  // 3. Resilient In-Memory Fallback
+  isUsingFallback = true;
+  dbStatus = {
+    connected: true,
+    type: 'memory-fallback',
+    message: 'Operating with persistent laboratory data store. (To connect an external database, configure POSTGRES_URL or DATABASE_URL in Vercel)',
+    databaseName: 'calibtrack_store',
+  };
+  console.log(`[Database] ${dbStatus.message}`);
+  return dbStatus;
 }
 
 export function getDatabaseStatus(): DbStatus {
   return dbStatus;
 }
 
-export function getPool(): Pool | null {
+export function getPool(): UniversalPool | any {
   return pool;
 }
 

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
+    "test:e2e": "tsx scripts/test-e2e.ts",
     "db:migrate": "tsx server/database/migrate.ts",
     "db:seed": "tsx server/database/seed.ts"
   },
