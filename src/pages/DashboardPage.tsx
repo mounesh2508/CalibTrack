@@ -34,7 +34,6 @@ import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Equipment, RecentActivity } from '../types';
-import { monthlyTrendData } from '../data/mockData';
 import { api, ApiDashboardSummary, mapBackendEquipmentToFrontend } from '../services/api';
 
 interface DashboardPageProps {

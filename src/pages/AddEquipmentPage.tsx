@@ -4,6 +4,8 @@ import { Button } from '../components/common/Button';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
 import { AutocompleteInput } from '../components/common/AutocompleteInput';
 import { SCHOOL_COLLEGE_CATEGORIES, SCHOOL_COLLEGE_DEPARTMENTS } from '../constants/schoolLabPresets';
+import { calculateCalibrationMetrics } from '../utils/calibrationDateHelper';
+import { StatusBadge } from '../components/common/StatusBadge';
 import { Equipment } from '../types';
 import { api } from '../services/api';
 
@@ -16,6 +18,7 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
   onNavigate,
   onAddEquipment,
 }) => {
+  const todayStr = new Date().toISOString().split('T')[0];
   const [formData, setFormData] = useState({
     name: '',
     code: `EQ-2026-${String(Math.floor(Math.random() * 900) + 100)}`,
@@ -25,9 +28,9 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
     serialNumber: '',
     department: 'Physics Lab' as Equipment['department'],
     location: '',
-    purchaseDate: '2026-01-15',
+    purchaseDate: todayStr,
     calibrationIntervalMonths: 6,
-    lastCalibrationDate: '2026-08-01',
+    lastCalibrationDate: todayStr,
     description: '',
     tolerance: '±0.01 %',
     assignedTechnician: 'Dr. Sarah Lin',
@@ -61,7 +64,9 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Send to backend API
+      const metrics = calculateCalibrationMetrics(formData.lastCalibrationDate, formData.calibrationIntervalMonths);
+
+      // 1. Send to backend API with accurately computed next_calibration_date & status
       const createdItem = await api.createEquipment({
         equipment_code: formData.code.trim(),
         name: formData.name.trim(),
@@ -74,6 +79,8 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
         purchase_date: formData.purchaseDate,
         calibration_interval_days: Number(formData.calibrationIntervalMonths) * 30,
         last_calibration_date: formData.lastCalibrationDate,
+        next_calibration_date: metrics.nextCalibrationDate,
+        status: metrics.status.toUpperCase(),
         description: formData.description.trim() || undefined,
       });
 
@@ -281,14 +288,44 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
               </Select>
             </FormField>
 
-            <FormField label="Last Calibration Date" required>
+            <FormField label="Last Calibration Date" required helperText="Date when instrument was last verified">
               <Input
                 type="date"
                 value={formData.lastCalibrationDate}
                 onChange={(e) => setFormData({ ...formData, lastCalibrationDate: e.target.value })}
               />
             </FormField>
+          </div>
 
+          {/* Live Calibration Schedule Calculation Preview */}
+          {(() => {
+            const preview = calculateCalibrationMetrics(formData.lastCalibrationDate, formData.calibrationIntervalMonths);
+            return (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    Calculated Next Calibration
+                  </span>
+                  <p className="text-sm font-bold text-slate-900 mt-0.5">
+                    {preview.nextCalibrationDate}{' '}
+                    <span className="text-xs font-normal text-slate-500">
+                      ({preview.daysRemaining < 0
+                        ? `${Math.abs(preview.daysRemaining)} days overdue`
+                        : preview.daysRemaining === 0
+                        ? 'due today'
+                        : `due in ${preview.daysRemaining} days`})
+                    </span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-500 text-[11px]">Calculated Status:</span>
+                  <StatusBadge status={preview.status} size="sm" />
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Acceptable Error / Tolerance">
               <Input
                 placeholder="e.g. ±0.0001 g"

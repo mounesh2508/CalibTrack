@@ -1,7 +1,9 @@
 import { Equipment, CalibrationRecord, NotificationItem, AuthUser, AuthSession } from '../types';
+import { calculateCalibrationMetrics } from '../utils/calibrationDateHelper';
 
 // Use VITE_API_BASE_URL if configured, otherwise default to /api
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+const envBaseUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_BASE_URL) || '/api';
+export const API_BASE_URL = envBaseUrl.replace(/\/$/, '');
 
 // -----------------------------------------------------------------------------
 // Session Management & Storage Helpers
@@ -110,24 +112,19 @@ export interface CalibrationApiPayload {
 // Data Normalizers
 // -----------------------------------------------------------------------------
 export function mapBackendEquipmentToFrontend(item: any): Equipment {
-  const nextDateStr = item.next_calibration_date || item.nextCalibrationDate || null;
-  const nextDate = nextDateStr ? new Date(nextDateStr) : null;
-  const daysRemaining = nextDate
-    ? Math.ceil((nextDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    : item.days_remaining ?? item.daysRemaining ?? 0;
-
-  const rawStatus = (item.status || 'CALIBRATED').toLowerCase();
-  let status: Equipment['status'] = 'calibrated';
-  if (rawStatus === 'overdue' || daysRemaining < 0) {
-    status = 'overdue';
-  } else if (rawStatus === 'due_soon' || rawStatus === 'due soon' || daysRemaining <= 30) {
-    status = 'due_soon';
-  } else {
-    status = 'calibrated';
-  }
-
   const intervalDays = item.calibration_interval_days || item.calibrationIntervalDays || 180;
-  const intervalMonths = Math.max(1, Math.round(intervalDays / 30));
+  const intervalMonths = item.calibrationIntervalMonths || Math.max(1, Math.round(Number(intervalDays) / 30));
+  const lastCalDateStr = item.last_calibration_date || item.lastCalibrationDate || null;
+  const explicitNextDateStr = item.next_calibration_date || item.nextCalibrationDate || null;
+
+  // Accurately compute nextCalibrationDate, daysRemaining, and status based on interval and last calibration date
+  const metrics = calculateCalibrationMetrics(lastCalDateStr, intervalMonths, explicitNextDateStr, Number(intervalDays));
+
+  const rawStatus = (item.status || '').toLowerCase();
+  let status: Equipment['status'] = metrics.status;
+  if (rawStatus === 'maintenance' || rawStatus === 'out_of_service') {
+    status = rawStatus as Equipment['status'];
+  }
 
   const rawId =
     item.id ||
@@ -150,17 +147,17 @@ export function mapBackendEquipmentToFrontend(item: any): Equipment {
     id: resolvedId,
     code: resolvedCode,
     name: resolvedName,
-    category: (item.category as Equipment['category']) || 'Balances & Scales',
-    manufacturer: item.manufacturer || 'Standard Lab Equipment',
+    category: (item.category as Equipment['category']) || 'Measurement & Metrology',
+    manufacturer: item.manufacturer || 'Standard Metrology OEM',
     model: item.model_number || item.model || 'Model Standard',
     serialNumber: item.serial_number || item.serialNumber || 'SN-UNASSIGNED',
-    department: (item.department as Equipment['department']) || 'Quality Control',
+    department: (item.department as Equipment['department']) || 'Physics Lab',
     location: item.location || 'Central Laboratory',
-    purchaseDate: item.purchase_date || item.purchaseDate || '2024-01-01',
+    purchaseDate: item.purchase_date || item.purchaseDate || metrics.nextCalibrationDate,
     calibrationIntervalMonths: intervalMonths,
-    lastCalibrationDate: item.last_calibration_date || item.lastCalibrationDate || '2026-01-01',
-    nextCalibrationDate: nextDateStr || '2026-07-01',
-    daysRemaining,
+    lastCalibrationDate: lastCalDateStr || new Date().toISOString().split('T')[0],
+    nextCalibrationDate: metrics.nextCalibrationDate,
+    daysRemaining: metrics.daysRemaining,
     status,
     assignedTechnician: item.assigned_technician || item.assignedTechnician || 'Dr. Sarah Lin',
     description: item.description || undefined,
@@ -526,23 +523,26 @@ export const api = {
         }
       } catch {}
 
-      const now = Date.now();
       let calibratedCount = 0;
       let dueSoonCount = 0;
       let overdueCount = 0;
 
       const upcomingCalibrations = equipmentList
-        .filter((eq) => eq.nextCalibrationDate)
         .map((eq) => {
-          const nextDate = new Date(eq.nextCalibrationDate);
-          const daysRemaining = Math.ceil((nextDate.getTime() - now) / (1000 * 60 * 60 * 24));
-          if (eq.status === 'overdue' || daysRemaining < 0) {
+          const metrics = calculateCalibrationMetrics(
+            eq.lastCalibrationDate,
+            eq.calibrationIntervalMonths || 6,
+            eq.nextCalibrationDate
+          );
+
+          if (metrics.status === 'overdue') {
             overdueCount++;
-          } else if (eq.status === 'due_soon' || daysRemaining <= 30) {
+          } else if (metrics.status === 'due_soon') {
             dueSoonCount++;
           } else {
             calibratedCount++;
           }
+
           return {
             id: eq.id,
             equipmentId: eq.id,
@@ -550,9 +550,9 @@ export const api = {
             name: eq.name,
             equipmentName: eq.name,
             category: eq.category,
-            nextCalibrationDate: eq.nextCalibrationDate,
-            daysRemaining,
-            status: eq.status.toUpperCase(),
+            nextCalibrationDate: metrics.nextCalibrationDate,
+            daysRemaining: metrics.daysRemaining,
+            status: metrics.status.toUpperCase(),
           };
         })
         .sort((a, b) => a.daysRemaining - b.daysRemaining)

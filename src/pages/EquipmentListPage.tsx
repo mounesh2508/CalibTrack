@@ -23,6 +23,7 @@ import { StatusBadge } from '../components/common/StatusBadge';
 import { Pagination } from '../components/common/Pagination';
 import { EmptyState } from '../components/common/EmptyState';
 import { LoadingState } from '../components/common/LoadingState';
+import { calculateCalibrationMetrics } from '../utils/calibrationDateHelper';
 import { Modal } from '../components/common/Modal';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
 import { AutocompleteInput } from '../components/common/AutocompleteInput';
@@ -197,24 +198,22 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
     setEditError(null);
 
     try {
+      const metrics = calculateCalibrationMetrics(editTarget.lastCalibrationDate, editForm.calibrationIntervalMonths);
+      const updatePayload = {
+        name: editForm.name.trim(),
+        category: editForm.category,
+        location: editForm.location.trim(),
+        department: editForm.department,
+        calibration_interval_days: editForm.calibrationIntervalMonths * 30,
+        next_calibration_date: metrics.nextCalibrationDate,
+        status: metrics.status.toUpperCase(),
+        description: editForm.description.trim(),
+      };
+
       if (onUpdateEquipment) {
-        await onUpdateEquipment(editTarget.id, {
-          name: editForm.name.trim(),
-          category: editForm.category,
-          location: editForm.location.trim(),
-          department: editForm.department,
-          calibration_interval_days: editForm.calibrationIntervalMonths * 30,
-          description: editForm.description.trim(),
-        });
+        await onUpdateEquipment(editTarget.id, updatePayload);
       } else {
-        await api.updateEquipment(editTarget.id, {
-          name: editForm.name.trim(),
-          category: editForm.category,
-          location: editForm.location.trim(),
-          department: editForm.department,
-          calibration_interval_days: editForm.calibrationIntervalMonths * 30,
-          description: editForm.description.trim(),
-        });
+        await api.updateEquipment(editTarget.id, updatePayload);
         if (onRefreshList) await onRefreshList();
       }
 
@@ -695,6 +694,34 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                 </Select>
               </FormField>
             </div>
+
+            {/* Live Recalculated Calibration Due Date Preview */}
+            {editTarget && (() => {
+              const preview = calculateCalibrationMetrics(editTarget.lastCalibrationDate, editForm.calibrationIntervalMonths);
+              return (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                      Recalculated Next Due Date
+                    </span>
+                    <p className="text-sm font-bold text-slate-900 mt-0.5">
+                      {preview.nextCalibrationDate}{' '}
+                      <span className="text-xs font-normal text-slate-500">
+                        ({preview.daysRemaining < 0
+                          ? `${Math.abs(preview.daysRemaining)}d overdue`
+                          : preview.daysRemaining === 0
+                          ? 'due today'
+                          : `in ${preview.daysRemaining} days`})
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 text-[11px]">Status:</span>
+                    <StatusBadge status={preview.status} size="sm" />
+                  </div>
+                </div>
+              );
+            })()}
 
             <FormField label="Description / Protocol Remarks">
               <Textarea

@@ -9,10 +9,53 @@ export interface EquipmentFilterOptions {
   department?: string;
 }
 
+function normalizeEquipmentStatus(eq: EquipmentEntity): EquipmentEntity {
+  const now = new Date();
+  const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const interval = Number(eq.calibration_interval_days) || 180;
+  let nextDateStr = eq.next_calibration_date;
+
+  if (!nextDateStr && eq.last_calibration_date) {
+    const match = eq.last_calibration_date.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      const y = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10) - 1;
+      const d = parseInt(match[3], 10);
+      const nextUtc = new Date(Date.UTC(y, m, d + interval));
+      nextDateStr = nextUtc.toISOString().split('T')[0];
+    }
+  }
+
+  let status: DbEquipmentStatus = 'CALIBRATED';
+  if (nextDateStr) {
+    const match = nextDateStr.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (match) {
+      const y = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10) - 1;
+      const d = parseInt(match[3], 10);
+      const targetUtc = new Date(Date.UTC(y, m, d));
+      const diffDays = Math.round((targetUtc.getTime() - todayUtc.getTime()) / 86400000);
+      if (diffDays < 0) {
+        status = 'OVERDUE';
+      } else if (diffDays <= 30) {
+        status = 'DUE_SOON';
+      } else {
+        status = 'CALIBRATED';
+      }
+    }
+  }
+
+  return {
+    ...eq,
+    next_calibration_date: nextDateStr || eq.next_calibration_date,
+    status,
+  };
+}
+
 export class EquipmentService {
   async list(filters: EquipmentFilterOptions = {}): Promise<EquipmentEntity[]> {
     if (isFallback() || !getPool()) {
-      let items = [...memoryStore.equipment];
+      let items = memoryStore.equipment.map(normalizeEquipmentStatus);
 
       if (filters.search) {
         const q = filters.search.toLowerCase();
@@ -69,13 +112,13 @@ export class EquipmentService {
     sql += ' ORDER BY next_calibration_date ASC';
 
     const [rows] = await pool.query(sql, params);
-    return rows as EquipmentEntity[];
+    return (rows as EquipmentEntity[]).map(normalizeEquipmentStatus);
   }
 
   async getById(id: string): Promise<EquipmentEntity | null> {
     if (isFallback() || !getPool()) {
       const item = memoryStore.equipment.find((e) => e.id === id || e.equipment_code === id);
-      return item || null;
+      return item ? normalizeEquipmentStatus(item) : null;
     }
 
     const pool = getPool()!;
@@ -84,18 +127,18 @@ export class EquipmentService {
       [id, id]
     );
 
-    return rows.length > 0 ? (rows[0] as EquipmentEntity) : null;
+    return rows.length > 0 ? normalizeEquipmentStatus(rows[0] as EquipmentEntity) : null;
   }
 
   async getByCode(code: string): Promise<EquipmentEntity | null> {
     if (isFallback() || !getPool()) {
       const item = memoryStore.equipment.find((e) => e.equipment_code.toLowerCase() === code.toLowerCase());
-      return item || null;
+      return item ? normalizeEquipmentStatus(item) : null;
     }
 
     const pool = getPool()!;
     const [rows]: any = await pool.query('SELECT * FROM equipment WHERE equipment_code = ? LIMIT 1', [code]);
-    return rows.length > 0 ? (rows[0] as EquipmentEntity) : null;
+    return rows.length > 0 ? normalizeEquipmentStatus(rows[0] as EquipmentEntity) : null;
   }
 
   async create(data: {
@@ -128,21 +171,33 @@ export class EquipmentService {
     }
 
     const id = `eq-${crypto.randomUUID().slice(0, 8)}`;
-    const now = new Date().toISOString();
+    const nowIso = new Date().toISOString();
 
     // Calculate next_calibration_date & status
     let nextDate: string | null = null;
     let status: DbEquipmentStatus = 'CALIBRATED';
+    const intervalDays = Number(data.calibration_interval_days) || 180;
+    const today = new Date();
+    const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
 
     if (data.last_calibration_date) {
-      const last = new Date(data.last_calibration_date);
-      const next = new Date(last.getTime() + data.calibration_interval_days * 24 * 60 * 60 * 1000);
-      nextDate = next.toISOString().split('T')[0];
+      const match = data.last_calibration_date.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (match) {
+        const y = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10) - 1;
+        const d = parseInt(match[3], 10);
+        const nextUtc = new Date(Date.UTC(y, m, d + intervalDays));
+        nextDate = nextUtc.toISOString().split('T')[0];
 
-      const diffDays = Math.ceil((next.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      if (diffDays < 0) status = 'OVERDUE';
-      else if (diffDays <= 30) status = 'DUE_SOON';
-      else status = 'CALIBRATED';
+        const diffDays = Math.round((nextUtc.getTime() - todayUtc.getTime()) / 86400000);
+        if (diffDays < 0) status = 'OVERDUE';
+        else if (diffDays <= 30) status = 'DUE_SOON';
+        else status = 'CALIBRATED';
+      }
+    } else {
+      const nextUtc = new Date(todayUtc.getTime() + intervalDays * 86400000);
+      nextDate = nextUtc.toISOString().split('T')[0];
+      status = 'CALIBRATED';
     }
 
     const entity: EquipmentEntity = {
@@ -162,8 +217,8 @@ export class EquipmentService {
       status,
       description: data.description || null,
       created_by: data.created_by || null,
-      created_at: now,
-      updated_at: now,
+      created_at: nowIso,
+      updated_at: nowIso,
     };
 
     if (isFallback() || !getPool()) {
@@ -223,6 +278,26 @@ export class EquipmentService {
       id: current.id,
       updated_at: new Date().toISOString(),
     };
+
+    const intervalDays = updates.calibration_interval_days !== undefined ? Number(updates.calibration_interval_days) : current.calibration_interval_days;
+    const lastCal = updates.last_calibration_date !== undefined ? updates.last_calibration_date : current.last_calibration_date;
+
+    if (lastCal && intervalDays && !updates.next_calibration_date) {
+      const match = String(lastCal).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (match) {
+        const y = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10) - 1;
+        const d = parseInt(match[3], 10);
+        const nextUtc = new Date(Date.UTC(y, m, d + Number(intervalDays)));
+        updated.next_calibration_date = nextUtc.toISOString().split('T')[0];
+
+        const todayUtc = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
+        const diffDays = Math.round((nextUtc.getTime() - todayUtc.getTime()) / 86400000);
+        if (diffDays < 0) updated.status = 'OVERDUE';
+        else if (diffDays <= 30) updated.status = 'DUE_SOON';
+        else updated.status = 'CALIBRATED';
+      }
+    }
 
     if (isFallback() || !getPool()) {
       const index = memoryStore.equipment.findIndex((e) => e.id === current.id);
@@ -397,15 +472,19 @@ export class EquipmentService {
       let nextDate: string | null = null;
       let status: DbEquipmentStatus = 'CALIBRATED';
       let lastDate: string | null = null;
+      const todayUtc = new Date(Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()));
 
       if (raw.last_calibration_date) {
-        const parsed = new Date(raw.last_calibration_date);
-        if (!isNaN(parsed.getTime())) {
-          lastDate = parsed.toISOString().split('T')[0];
-          const next = new Date(parsed.getTime() + intervalDays * 24 * 60 * 60 * 1000);
-          nextDate = next.toISOString().split('T')[0];
+        const match = String(raw.last_calibration_date).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (match) {
+          const y = parseInt(match[1], 10);
+          const m = parseInt(match[2], 10) - 1;
+          const d = parseInt(match[3], 10);
+          lastDate = `${match[1]}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const nextUtc = new Date(Date.UTC(y, m, d + intervalDays));
+          nextDate = nextUtc.toISOString().split('T')[0];
 
-          const diffDays = Math.ceil((next.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          const diffDays = Math.round((nextUtc.getTime() - todayUtc.getTime()) / 86400000);
           if (diffDays < 0) status = 'OVERDUE';
           else if (diffDays <= 30) status = 'DUE_SOON';
           else status = 'CALIBRATED';
@@ -414,8 +493,9 @@ export class EquipmentService {
 
       if (!nextDate) {
         // Default next calibration date from today + interval
-        const next = new Date(Date.now() + intervalDays * 24 * 60 * 60 * 1000);
-        nextDate = next.toISOString().split('T')[0];
+        const nextUtc = new Date(todayUtc.getTime() + intervalDays * 86400000);
+        nextDate = nextUtc.toISOString().split('T')[0];
+        status = 'CALIBRATED';
       }
 
       const id = `eq-${crypto.randomUUID().slice(0, 8)}`;

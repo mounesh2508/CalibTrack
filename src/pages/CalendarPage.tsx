@@ -24,9 +24,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({
   calendarEvents,
   onNavigate,
 }) => {
-  // Current view year & month: October 2026 (matching system date context)
-  const [currentYear, setCurrentYear] = useState(2026);
-  const [currentMonth, setCurrentMonth] = useState(9); // 0-indexed: 9 = October
+  // Current view year & month: defaults dynamically to current system date
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
   const monthNames = [
@@ -57,8 +57,9 @@ export const CalendarPage: React.FC<CalendarPageProps> = ({
   };
 
   const goToToday = () => {
-    setCurrentYear(2026);
-    setCurrentMonth(9); // October
+    const now = new Date();
+    setCurrentYear(now.getFullYear());
+    setCurrentMonth(now.getMonth());
   };
 
   // Get events on a specific day (1 to daysInMonth)
