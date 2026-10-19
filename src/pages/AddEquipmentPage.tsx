@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Save, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { ArrowLeft, Save, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Sparkles, TrendingUp, TrendingDown, Check } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
 import { AutocompleteInput } from '../components/common/AutocompleteInput';
 import { SCHOOL_COLLEGE_CATEGORIES, SCHOOL_COLLEGE_DEPARTMENTS } from '../constants/schoolLabPresets';
 import { calculateCalibrationMetrics } from '../utils/calibrationDateHelper';
+import { predictCalibrationInterval } from '../utils/calibrationIntervalMl';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Equipment } from '../types';
 import { api } from '../services/api';
@@ -35,6 +36,16 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
     tolerance: '±0.01 %',
     assignedTechnician: 'Dr. Sarah Lin',
   });
+
+  const mlRecommendation = useMemo(() => {
+    return predictCalibrationInterval({
+      currentIntervalMonths: formData.calibrationIntervalMonths,
+      category: formData.category,
+      department: formData.department,
+      purchaseDate: formData.purchaseDate || undefined,
+      calibrationRecords: [],
+    });
+  }, [formData.calibrationIntervalMonths, formData.category, formData.department, formData.purchaseDate]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -295,6 +306,51 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
                 onChange={(e) => setFormData({ ...formData, lastCalibrationDate: e.target.value })}
               />
             </FormField>
+          </div>
+
+          {/* Embedded ML Interval Recommendation Assistant */}
+          <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-slate-50 to-blue-50/70 border border-indigo-200/80 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <div className="w-7 h-7 rounded-md bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                <Sparkles className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-slate-800">
+                    ML Recommended Interval: <span className="font-bold font-mono text-indigo-700">{mlRecommendation.recommendedIntervalMonths} Months</span> ({mlRecommendation.recommendedIntervalDays} days)
+                  </span>
+                  <span className="text-slate-400">·</span>
+                  <span className="text-[11px] font-mono tabular-nums text-slate-600">
+                    {mlRecommendation.reliabilityScore}% reliability score
+                  </span>
+                  <span className="text-slate-400">·</span>
+                  <span className="text-[11px] text-slate-500">
+                    {mlRecommendation.stabilityGrade}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Adaptive model analyzing {formData.category} metrology norms, apparatus wear curve, and ambient stability.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 flex items-center">
+              {formData.calibrationIntervalMonths === mlRecommendation.recommendedIntervalMonths ? (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                  <Check className="w-3.5 h-3.5" /> Matched
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="bg-white hover:bg-indigo-50 border-indigo-300 text-indigo-700 text-xs font-semibold shadow-2xs"
+                  onClick={() => setFormData({ ...formData, calibrationIntervalMonths: mlRecommendation.recommendedIntervalMonths })}
+                  icon={<Sparkles className="w-3.5 h-3.5 text-indigo-600" />}
+                >
+                  Apply ML Recommendation ({mlRecommendation.recommendedIntervalMonths} mo)
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Live Calibration Schedule Calculation Preview */}

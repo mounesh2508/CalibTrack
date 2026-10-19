@@ -22,6 +22,12 @@ router.put('/:id', equipmentController.update);
 // DELETE /api/equipment/:id
 router.delete('/:id', equipmentController.delete);
 
+// GET /api/equipment/:id/recommended-interval (ML interval recommendation)
+router.get('/:id/recommended-interval', equipmentController.getRecommendedInterval);
+
+// POST /api/equipment/:id/apply-interval (Apply ML recommended interval)
+router.post('/:id/apply-interval', equipmentController.applyRecommendedInterval);
+
 // GET /api/equipment/:id/calibration-records
 router.get('/:id/calibration-records', calibrationController.getForEquipment);
 

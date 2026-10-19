@@ -24,6 +24,7 @@ import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { Modal } from '../components/common/Modal';
 import { Equipment, CalibrationRecord, AuthUser } from '../types';
 import { api } from '../services/api';
+import { MlIntervalRecommendationCard } from '../components/equipment/MlIntervalRecommendationCard';
 
 interface EquipmentDetailsPageProps {
   equipmentId: string;
@@ -365,8 +366,17 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
           </Card>
         </div>
 
-        {/* Right Column: Compliance Schedule Card */}
+        {/* Right Column: Compliance Schedule & ML Recommendation Cards */}
         <div className="space-y-6">
+          <MlIntervalRecommendationCard
+            equipment={equipment}
+            calibrationHistory={displayHistory}
+            onIntervalUpdated={(updatedEquip) => {
+              setEquipment(updatedEquip);
+              if (onRefreshList) onRefreshList();
+            }}
+          />
+
           <Card>
             <CardHeader
               title="Calibration Cycle Schedule"

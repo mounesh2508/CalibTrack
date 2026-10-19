@@ -65,6 +65,8 @@ export interface CalibrationRecordEntity {
   certificate_number: string | null;
   result: DbCalibrationResult;
   remarks: string | null;
+  environmental_temp?: string | null;
+  environmental_humidity?: string | null;
   certificate_file_path: string | null;
   created_by: string | null;
   created_at: string;

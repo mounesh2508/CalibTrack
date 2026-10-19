@@ -1,5 +1,6 @@
 import { Equipment, CalibrationRecord, NotificationItem, AuthUser, AuthSession } from '../types';
 import { calculateCalibrationMetrics } from '../utils/calibrationDateHelper';
+import { IntervalPredictionResult, predictCalibrationInterval } from '../utils/calibrationIntervalMl';
 
 // Use VITE_API_BASE_URL if configured, otherwise default to /api
 const envBaseUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.VITE_API_BASE_URL) || '/api';
@@ -798,6 +799,29 @@ export const api = {
     return request<{ success: boolean; message: string }>(`/equipment/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+  },
+
+  // ML Calibration Interval Recommendations
+  async fetchRecommendedInterval(equipmentId: string): Promise<IntervalPredictionResult> {
+    const raw = await request<any>(`/equipment/${encodeURIComponent(equipmentId)}/recommended-interval`);
+    return raw.data || raw;
+  },
+
+  async applyRecommendedInterval(equipmentId: string): Promise<{
+    success: boolean;
+    message: string;
+    equipment: Equipment;
+    prediction: IntervalPredictionResult;
+  }> {
+    const raw = await request<any>(`/equipment/${encodeURIComponent(equipmentId)}/apply-interval`, {
+      method: 'POST',
+    });
+    return {
+      success: raw.success ?? true,
+      message: raw.message || 'Calibration interval updated to recommended schedule.',
+      equipment: mapBackendEquipmentToFrontend(raw.data?.equipment || raw.equipment || {}),
+      prediction: raw.data?.prediction || raw.prediction,
+    };
   },
 
   // Calibration Records

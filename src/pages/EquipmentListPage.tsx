@@ -17,6 +17,10 @@ import {
   AlertCircle,
   X,
   FileSpreadsheet,
+  Sparkles,
+  TrendingUp,
+  TrendingDown,
+  Check,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { StatusBadge } from '../components/common/StatusBadge';
@@ -24,6 +28,7 @@ import { Pagination } from '../components/common/Pagination';
 import { EmptyState } from '../components/common/EmptyState';
 import { LoadingState } from '../components/common/LoadingState';
 import { calculateCalibrationMetrics } from '../utils/calibrationDateHelper';
+import { predictCalibrationInterval } from '../utils/calibrationIntervalMl';
 import { Modal } from '../components/common/Modal';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
 import { AutocompleteInput } from '../components/common/AutocompleteInput';
@@ -78,6 +83,17 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
   });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  const editMlRecommendation = useMemo(() => {
+    if (!editTarget) return null;
+    return predictCalibrationInterval({
+      currentIntervalMonths: editForm.calibrationIntervalMonths,
+      category: editForm.category,
+      department: editForm.department,
+      purchaseDate: editTarget.purchaseDate,
+      calibrationRecords: [],
+    });
+  }, [editTarget, editForm.calibrationIntervalMonths, editForm.category, editForm.department]);
 
   // Success toast/message state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -694,6 +710,49 @@ export const EquipmentListPage: React.FC<EquipmentListPageProps> = ({
                 </Select>
               </FormField>
             </div>
+
+            {/* ML Interval Recommendation Assistant */}
+            {editMlRecommendation && (
+              <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-slate-50 to-blue-50/70 border border-indigo-200/80 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-6 h-6 rounded-md bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-semibold text-slate-800">
+                        ML Recommended Interval: <span className="font-bold font-mono text-indigo-700">{editMlRecommendation.recommendedIntervalMonths} Months</span> ({editMlRecommendation.recommendedIntervalDays} days)
+                      </span>
+                      <span className="text-slate-400">·</span>
+                      <span className="text-[11px] font-mono tabular-nums text-slate-600">
+                        {editMlRecommendation.reliabilityScore}% reliability
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      {editMlRecommendation.stabilityGrade} · ISO 17025 adaptive drift regression
+                    </p>
+                  </div>
+                </div>
+                <div className="shrink-0 flex items-center">
+                  {editForm.calibrationIntervalMonths === editMlRecommendation.recommendedIntervalMonths ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                      <Check className="w-3.5 h-3.5" /> Recommended
+                    </span>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="bg-white hover:bg-indigo-50 border-indigo-300 text-indigo-700 text-xs font-semibold shadow-2xs"
+                      onClick={() => setEditForm({ ...editForm, calibrationIntervalMonths: editMlRecommendation.recommendedIntervalMonths })}
+                      icon={<Sparkles className="w-3.5 h-3.5 text-indigo-600" />}
+                    >
+                      Apply ML ({editMlRecommendation.recommendedIntervalMonths} mo)
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Live Recalculated Calibration Due Date Preview */}
             {editTarget && (() => {

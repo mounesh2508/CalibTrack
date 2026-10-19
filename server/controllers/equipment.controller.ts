@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { equipmentService } from '../services/equipment.service';
+import { mlIntervalService } from '../services/mlInterval.service';
 
 export class EquipmentController {
   async getAll(req: Request, res: Response, Next: NextFunction) {
@@ -171,6 +172,33 @@ export class EquipmentController {
       res.status(200).json({
         success: true,
         message: `Bulk import completed: ${result.importedCount} imported, ${result.skippedCount} skipped.`,
+        data: result,
+      });
+    } catch (error) {
+      Next(error);
+    }
+  }
+
+  async getRecommendedInterval(req: Request, res: Response, Next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const recommendation = await mlIntervalService.getRecommendation(id);
+      res.json({
+        success: true,
+        data: recommendation,
+      });
+    } catch (error) {
+      Next(error);
+    }
+  }
+
+  async applyRecommendedInterval(req: Request, res: Response, Next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const result = await mlIntervalService.applyRecommendedInterval(id);
+      res.json({
+        success: true,
+        message: `Applied recommended interval of ${result.prediction.recommendedIntervalMonths} months (${result.prediction.recommendedIntervalDays} days).`,
         data: result,
       });
     } catch (error) {

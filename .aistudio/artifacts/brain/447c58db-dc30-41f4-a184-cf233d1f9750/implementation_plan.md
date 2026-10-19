@@ -1,111 +1,120 @@
-# Implementation Plan: School & College Laboratory Presets with Custom Autocomplete Input
+# ML Calibration Interval Recommendation Engine
 
-Update the equipment category and laboratory department configurations throughout the application to suit academic school and college laboratories (Physics, Chemistry, Biology, Computer Science, and Engineering Labs), and provide direct text typing with an autocomplete dropdown suggestion list for arbitrary custom inputs.
-
----
-
-## 1. Requirement & User Clarification Summary
-
-- **Academic Presets**: Preload standard school and college laboratory departments:
-  - Physics Lab
-  - Chemistry Lab
-  - Biology Lab
-  - Computer Science Lab
-  - Engineering & Robotics Lab
-  - General Science Lab
-  - Mathematics & Instrumentation Lab
-- **Equipment Categories tailored for Academic Labs**:
-  - Optical Instruments (Microscopes, Telescopes, Spectrometers, Prisms)
-  - Measurement & Metrology (Balances, Vernier Calipers, Screw Gauges, Meter Rules)
-  - Electrical & Electronics (Oscilloscopes, Multimeters, Power Supplies, Signal Generators)
-  - Thermal & Heating (Bunsen Burners, Water Baths, Hot Plates, Incubators, Autoclaves)
-  - Chemical & Glassware Apparatus (Burettes, Pipettes, Titration Units, Centrifuges)
-  - Biological & Specimen Equipment (Centrifuges, Dissection Kits, Hemocytometers)
-  - Computing & Robotics Hardware (Microcontrollers, Sensor Kits, Workstations, 3D Printers)
-  - General Laboratory Apparatus
-- **Custom Input Option**:
-  - Replace rigid select dropdowns with an **autocomplete combobox input component**.
-  - Users can either pick from the school/college suggestion list or type **any custom value** directly into the field.
-- **Scope**:
-  - Apply to both **Register New Equipment** (`AddEquipmentPage.tsx`) and **Edit Equipment Metadata Modal** (`EquipmentListPage.tsx`), and support custom categories in registry filters and CSV import.
+Predict and recommend optimal laboratory calibration intervals using an adaptive regression model with drift reliability scoring based on historical calibration records, instrument age, and environmental stability.
 
 ---
 
-## 2. Proposed Architectural Changes
+## User Review & Critical Decisions
 
-### A. TypeScript Type Definitions (`src/types/index.ts`)
-- Update `Equipment['category']` and `Equipment['department']` from rigid industrial pharmaceutical unions to flexible string types supporting academic presets while allowing arbitrary custom strings:
-  ```ts
-  export type AcademicDepartment =
-    | 'Physics Lab'
-    | 'Chemistry Lab'
-    | 'Biology Lab'
-    | 'Computer Science Lab'
-    | 'Engineering & Robotics Lab'
-    | 'General Science Lab'
-    | (string & {});
-
-  export type AcademicCategory =
-    | 'Measurement & Metrology'
-    | 'Optical Instruments'
-    | 'Electrical & Electronics'
-    | 'Thermal & Heating'
-    | 'Chemical & Glassware Apparatus'
-    | 'Biological & Specimen Equipment'
-    | 'Computing & Robotics Hardware'
-    | 'General Laboratory Apparatus'
-    | (string & {});
-  ```
+> [!IMPORTANT]
+> The following architectural and user experience decisions have been aligned based on your specifications:
+> - **Input Factors**: The model analyzes **historical calibration records** (pass rate, adjustments, drift), **instrument age** (years since acquisition/commissioning), and **ambient environmental stability** (temperature and humidity variance).
+> - **Surface Placement**: Recommendations appear directly embedded within the **Add Instrument form**, the **Edit Equipment modal**, and the **Equipment Details page** (with full factor explanation, confidence level, and 1-click application).
+> - **Model Approach**: An **adaptive regression model with drift reliability scoring**, bounded by ISO 17025 laboratory safeguards (30-day minimum, 365-day maximum).
 
 ---
 
-### B. Shared Autocomplete Combobox Component (`src/components/common/AutocompleteInput.tsx`)
-- Build a lightweight, accessible combobox input:
-  - Renders a styled input with a dropdown chevron button.
-  - As the user types, filters suggestions in real time.
-  - Clicking the input or dropdown chevron reveals the school/college suggestion list.
-  - Clicking a suggestion selects it immediately.
-  - Allows typing any custom string freely (no lock-in).
-  - Outside click closes the suggestion panel.
+## 1. Overview & Core Concept
+
+- **What It Does**: Replaces static, arbitrary 6-month or 12-month calibration cycles with dynamic, data-driven interval recommendations tailored to each individual instrument's actual reliability record, age, and operating conditions.
+- **Target Persona**: Metrology Supervisors, Laboratory Technicians, and Academic Lab Custodians maintaining physics, chemistry, biology, and engineering laboratory apparatus.
+- **Key Value**:
+  - **Reduces Unnecessary Downtime**: Extends intervals for highly stable, pristine instruments (e.g. from 6 months to 9 or 12 months) backed by quantitative proof.
+  - **Prevents Out-of-Tolerance Failures**: Automatically tightens intervals (e.g. from 12 months to 3 or 6 months) for aging, drifting, or environmentally stressed instruments before failures occur.
+  - **Defensible Compliance**: Provides an auditable mathematical rationale with reliability scores and factor weightings aligned with ISO 17025 recommendations.
 
 ---
 
-### C. Update Register New Equipment Form (`src/pages/AddEquipmentPage.tsx`)
-- Update initial state defaults:
-  - `department`: `'Physics Lab'`
-  - `category`: `'Measurement & Metrology'`
-- Replace rigid `<Select>` with `<AutocompleteInput>` for both **Equipment Category** and **Laboratory Department**.
-- Provide pre-populated school & college presets list with a "Custom" label hint.
+## 2. User Experience & Visual Design
+
+Following the **Universal Frontend Design Constitution** and **Science, Space & Biotech** guidelines:
+
+### A. Add Instrument Screen (`src/pages/AddEquipmentPage.tsx`)
+- Inside **Section 3: Calibration Schedule & Metrology Specs**:
+  - Beside the manual interval selector, display an inline **ML Recommended Interval** assistant.
+  - As the user enters category, department, and purchase date, the model computes a baseline recommended interval in real time.
+  - Provides a single-click button: `"Apply ML Recommendation"` to automatically populate the interval field.
+
+### B. Equipment Details Screen (`src/pages/EquipmentDetailsPage.tsx`)
+- In the right-hand inspection column, add an **ML Calibration Interval Recommendation & Reliability Analysis** card:
+  - **Current Interval vs. Recommended Interval**: Side-by-side comparison with net difference (`+3 months` or `-3 months`).
+  - **Empirical Reliability Score**: Formatted with tabular monospace precision (e.g., `94.5% High Stability`).
+  - **Factor Weighting Breakdown**:
+    - *Historical Calibration Drift*: Track records of passed vs. adjusted vs. failed calibrations.
+    - *Environmental Stability*: Temperature & relative humidity fluctuation penalties.
+    - *Equipment Aging & Wear Curve*: Depreciation curve based on years in service.
+  - **One-Click Apply Action**: `"Update Interval to Recommended"`, which recalculates the next calibration date and updates the database immediately.
+
+### C. Quick Edit Modal (`src/pages/EquipmentListPage.tsx`)
+- When editing any existing instrument, an unobtrusive recommendation callout highlights whether the instrument is currently over-calibrated or at risk, allowing technicians to adopt the recommended interval instantly.
+
+### D. Visual Restraint & Typography
+- Clean unboxed metadata with `·` separators (strictly no static pill badges).
+- Tabular monospace numbers (`font-mono tabular-nums`) for percentages, variances, and day intervals.
+- Non-hue-only status reporting (`● High Stability`, `▲ Moderate Drift`, `✖ Critical Wear`).
 
 ---
 
-### D. Update Edit Equipment Modal (`src/pages/EquipmentListPage.tsx`)
-- Replace the static `<Select>` options in the Edit Metadata Modal with `<AutocompleteInput>` for Category and Department.
-- Ensure existing equipment with legacy or custom categories load and edit without breaking.
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Dual Client/Server Architecture**:
+  - *Chosen Approach*: Encapsulate the core mathematical ML model in a shared TypeScript metrology engine (`src/utils/calibrationIntervalMl.ts` and `server/services/mlInterval.service.ts`).
+  - *Why*: Delivers zero-latency, reactive feedback in the browser during form data entry, while also exposing a dedicated serverless REST endpoint (`GET /api/equipment/:id/recommended-interval` and `POST /api/equipment/:id/apply-interval`) for persistent audit trails.
+- **Decision 2: Clamped ISO 17025 Boundaries**:
+  - *Chosen Approach*: Clamp all generated interval recommendations between 30 days (1 month) and 365 days (12 months), snapping to standard operational intervals (1, 3, 6, 9, 12 months) with fractional day precision.
+  - *Why*: Metrology laboratories operate on standard inspection windows; unconstrained models recommending e.g. 73 days disrupt operational calibration vendor contracts.
 
 ---
 
-### E. Registry Filters & CSV Import Verification
-- In `EquipmentListPage.tsx`, ensure filter dropdowns combine preloaded academic categories/departments with any newly registered custom categories from the active equipment list.
-- In `src/utils/csvEquipmentParser.ts`, ensure CSV import accepts any custom academic department or category without validation rejection.
+## 4. Technical Architecture & Data Strategy
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Input Feature Vectors                           │
+│  - Historical Calibration Records (Passed, Adjusted, Failed)           │
+│  - Instrument Age (Commissioning / Purchase Date to Current Date)      │
+│  - Environmental Conditions (Ambient Temp °C & Humidity %RH Variance)  │
+│  - Metrological Category Baselines (Physics, Chemistry, Metrology)     │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│               ML Adaptive Regression & Drift Scoring Engine            │
+│                                                                        │
+│  1. Reliability Score R_hist = (1.0 * passed + 0.5 * adj + 0 * fail)  │
+│  2. Drift Factor D = exp(-drift_penalty * consecutive_adjustments)     │
+│  3. Age Decay Factor A = max(0.65, 1.0 - 0.04 * age_in_years)         │
+│  4. Environmental Stress E = max(0.70, 1.0 - (temp_var + rh_var))     │
+│                                                                        │
+│  Predicted Days = BaseIntervalDays * R_hist * D * A * E                │
+│  Clamped Interval: [30 days, 365 days] -> Nearest Optimal Month Preset │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  ▼                                   ▼
+┌───────────────────────────────────┐ ┌──────────────────────────────────┐
+│      Client-Side Components       │ │      Backend REST Endpoints      │
+│ - AddEquipmentPage: Live ML Hint  │ │ - GET  /api/equipment/:id/       │
+│ - EquipmentDetailsPage: Analysis  │ │        recommended-interval      │
+│ - EquipmentListPage: Edit Modal   │ │ - POST /api/equipment/:id/       │
+│ - StatusBadge & Trend Indicators  │ │        apply-interval            │
+└───────────────────────────────────┘ └──────────────────────────────────┘
+```
 
 ---
 
-## 3. Verification Plan
+## 5. Implementation Roadmap
 
-### Automated Verification
-- Run `lint_applet` (`tsc --noEmit`) to verify zero TypeScript errors.
-- Run `compile_applet` to ensure successful bundle compilation.
-
-### Manual Verification
-1. **New Equipment Registration**:
-   - Navigate to `/equipment/new`.
-   - Verify category and department fields display academic options (Physics Lab, Chemistry Lab, etc.).
-   - Type a custom category (e.g., "Photonics & Laser Lab" or "Robotics Kit") and a custom department (e.g., "Advanced Mechatronics").
-   - Submit the form and verify the new instrument is registered with the custom category and department.
-2. **Edit Equipment Modal**:
-   - In Equipment Registry, click **Actions -> Edit Metadata** on any instrument.
-   - Verify the autocomplete dropdown suggestions show school/college presets.
-   - Enter a custom value and save. Verify the table reflects the updated custom value immediately.
-3. **Filter Test**:
-   - In Equipment Registry, verify category and department filter dropdowns include both preset academic categories and user-created custom categories.
+1. **ML Recommendation Engine (`src/utils/calibrationIntervalMl.ts`)**:
+   - Build pure TypeScript ML regression model taking calibration history, equipment age, and environmental parameters.
+   - Return recommended interval (days & months), reliability score (0-100%), confidence score, and explainability factors.
+2. **Backend API Endpoints (`server/routes/equipment.routes.ts` & `server/services/equipment.service.ts`)**:
+   - Expose `GET /api/equipment/:id/recommended-interval` computing prediction based on stored calibration records and equipment data.
+   - Expose `POST /api/equipment/:id/apply-interval` to update equipment interval, recalculate next calibration date, and log an audit notification.
+3. **Frontend Integration**:
+   - `AddEquipmentPage.tsx`: Add reactive ML recommendation preview with 1-click apply.
+   - `EquipmentDetailsPage.tsx`: Add comprehensive ML reliability & interval analysis card with factor breakdown.
+   - `EquipmentListPage.tsx`: Add recommended interval chip in quick edit modal.
+4. **Verification & Testing**:
+   - Automated unit tests covering diverse scenarios (brand new instrument, aging drifting instrument, pristine calibration history).
+   - Verify zero lint and compilation errors with `compile_applet`.

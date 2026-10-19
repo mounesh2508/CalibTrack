@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to update equipment category and laboratory department options tailored for school and college laboratories, with editable autocomplete combobox inputs that allow entering any custom string.",
-  "updatedAt": "2026-10-16T08:55:41.429306458Z",
+  "summary": "Implementation plan for integrating an ML-driven adaptive regression model with drift reliability scoring to predict and recommend optimal calibration intervals across Add, Edit, and Equipment Details views.",
+  "updatedAt": "2026-10-19T05:49:51.721282227Z",
   "requestFeedback": true,
   "userFacing": true
 }
