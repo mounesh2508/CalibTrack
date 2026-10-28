@@ -1,113 +1,89 @@
-# CalibTrack Real Email Delivery & Verification Code Backup System
+# Removal of On-Screen Lab Mailbox Backup & Auto-Fill
 
-Deliver real verification emails to registered staff inboxes using Resend API and standard SMTP, paired with an instant on-screen lab inbox backup and one-click OTP auto-fill to guarantee seamless onboarding across all deployment environments.
+Establish strict external email verification across CalibTrack staff registration and password recovery workflows by removing the on-screen lab mailbox backup card and auto-fill button, replacing them with standard email delivery guidance and spam folder hints.
 
 ---
 
 ### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural and delivery decisions have been confirmed and will be incorporated into the implementation:
+> The following decisions confirmed by the user in Phase 1 will govern this revision:
 
-- **Confirmed Decision (Delivery Strategy)**: Dual-layer delivery—real email dispatch to the user's actual email address, combined with an on-screen verification code backup with one-click auto-fill in the modal.
-- **Confirmed Decision (Provider Support)**: Support both **Resend API** (via HTTPS REST API) and **Standard SMTP** (Nodemailer with host, port, user, pass) configurable through environment variables (`RESEND_API_KEY`, `SMTP_HOST`, `SMTP_USER`, etc.).
-- **Zero-Failure Fallback**: If external mail credentials are not provided or if the remote email API is temporarily unreachable, registration never crashes or blocks—the code is safely delivered via the on-screen lab backup with clear user status indication.
+- **Confirmed Decision 1**: Completely remove the on-screen lab mailbox backup card, auto-fill button, and copy button from both the **Staff Registration Verification modal** (`OtpVerificationModal.tsx`) and the **Password Recovery modal** (`ForgotPasswordModal.tsx`).
+- **Confirmed Decision 2**: Present a standard, clean metrology verification modal featuring 6-digit input boxes, a 15-minute countdown timer, a 60-second resend button with cooldown, and a clear delivery notice with spam/junk folder guidance.
+- **Confirmed Decision 3 (Strict Email Security)**: Discontinue exposing raw OTP verification codes in the frontend API response payloads, ensuring codes are strictly delivered to the user's external email inbox via Resend or SMTP.
 
 ---
 
 ### 1. Overview & Core Concept
 
-When lab managers or technicians register new staff accounts on CalibTrack, verification is required before access is granted. Currently, codes were generated in-memory and logged to the server console without transmitting across external mail protocols.
+Currently, registration and password recovery modals display a "Lab Mailbox Backup" card containing the active 6-digit code and an "Auto-Fill" button. To establish a production-grade, secure verification flow where staff must authenticate using their real inbox:
 
-This upgrade establishes:
-1. **Real External Email Transmission**: Dispatches genuine HTML emails containing the 6-digit verification code directly to the registrant's inbox (e.g. Gmail, Outlook, lab domain) using either Resend or custom SMTP.
-2. **On-Screen Verification Backup Banner**: An interactive metrology lab inbox card inside the verification modal displaying the active 6-digit code with **"One-Click Auto-Fill"** and **"Copy Code"** actions.
-3. **Delivery Status Feedback**: Clear visual badges informing the user whether the email was dispatched to external mail servers or is running via sandbox mode.
+1. **Strict Inbox Verification**: Users must open their real email account (Gmail, Outlook, lab domain) to retrieve the 6-digit verification code.
+2. **Clean & Distraction-Free UI**: The verification modals will present only the essential 6-digit input fields, delivery recipient email, expiration countdown, resend button, and helpful delivery troubleshooting guidance (e.g., spam folder check).
+3. **No Code Leakage**: API response payloads will cease transmitting `otp_code` in the JSON body, enforcing true end-to-end email channel verification.
 
 ---
 
 ### 2. User Experience & Visual Design
 
-#### Key User Flows
-1. **Staff Registration**:
-   - User inputs Name, Email, and Password on the registration screen and clicks "Register Staff Member".
-   - Backend creates the user entry, generates a cryptographically sound 6-digit OTP, and triggers `emailService.sendVerificationOtp()`.
-   - The user's external inbox receives an ISO 17025 styled email with the verification code.
-   - The UI immediately transitions into the 6-digit verification modal.
-2. **Verification & Auto-Fill**:
-   - The modal shows the recipient address, countdown timer (15 minutes), and an on-screen verification backup card.
-   - Users can either type the code received in their external email or click **"Auto-Fill Code"** directly on the on-screen card.
-   - Upon entering the 6th digit, the account is automatically activated, transitioning the user straight into the system.
-3. **Resend Code**:
-   - Clicking "Resend Code" enforces a 60-second cooldown, dispatches a fresh email, and refreshes the backup card.
-
-#### Visual Design Tokens & Component Styling
-- **Modal Header**: Rich deep laboratory blue gradient (`from-blue-600 to-indigo-700`) with clean typography and ISO status badge.
-- **On-Screen Backup Card**: Elegant amber/indigo card with border styling (`bg-slate-50 border-slate-200`), featuring a glowing 6-digit badge and quick auto-fill button.
-- **HTML Email Design**: Responsive laboratory-themed template with CalibTrack header, bold verification code display (`32px` monospace font), expiration alert, and clean security notice.
+#### Cleaned Verification Flow
+1. **Initiate Action**:
+   - Staff registers or initiates password recovery.
+   - Real email is dispatched to their email address via Resend API or SMTP.
+2. **Verification View**:
+   - Clean, professional modal header in deep metrology blue gradient (`from-blue-600 to-indigo-700`).
+   - Notice banner: *"We sent a 6-digit verification code to `user@domain.com`. Please check your inbox and enter the code below."*
+   - Helpful footnote: *"Tip: If you don't see the email within 1–2 minutes, please check your spam or junk folder."*
+   - Six individual auto-advancing numeric input slots (`w-11 h-13`).
+   - Expiration timer (`15:00`) and "Resend Code" button with 60-second cooldown.
+   - Direct verification submission button ("Confirm & Activate" / "Verify & Continue").
 
 ---
 
-### 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Native REST Resend Client + SMTP Adapter**
-  - *Chosen Approach*: Implement a zero-dependency lightweight HTTPS client for Resend API alongside Nodemailer for SMTP.
-  - *Why*: Minimizes serverless bundle weight for Vercel, executes in under 200ms, and requires no heavy native C++ binaries.
-  - *Alternatives Considered*: Heavy monolithic SDKs that increase cold-start latency on Vercel.
-
-- **Decision 2: Non-Blocking Async Dispatch with Fail-Safe Fallback**
-  - *Chosen Approach*: Send email asynchronously and always provide the active verification code in the API response.
-  - *Why*: Prevents network timeouts from external mail servers from blocking user registration, ensuring users can always complete registration.
-
----
-
-### 4. Technical Architecture & Data Strategy
+### 3. Technical Architecture & Component Mapping
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   Frontend UI                          │
-│  - LoginPage.tsx (Registration & Login tabs)           │
-│  - OtpVerificationModal.tsx (Inputs + Backup Banner)   │
-│  - ForgotPasswordModal.tsx (Password reset codes)      │
+│                                                        │
+│  OtpVerificationModal.tsx                              │
+│   ├── [REMOVED] On-screen backup card & auto-fill      │
+│   ├── [REMOVED] Copy code button                       │
+│   └── [KEPT] 6-digit inputs, spam hint, resend button  │
+│                                                        │
+│  ForgotPasswordModal.tsx                               │
+│   ├── [REMOVED] On-screen backup card in VERIFY_OTP    │
+│   └── [KEPT] Standard OTP inputs & timer               │
 └──────────────────────────┬─────────────────────────────┘
-                           │ POST /api/auth/register
+                           │ POST /api/auth/verify-code
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │                   Express API                          │
-│  - server/routes/auth.routes.ts                        │
-│    ├── Generates 6-digit numeric OTP                   │
-│    ├── Stores in-memory/DB with 15-min TTL             │
-│    └── Invokes emailService.sendVerificationEmail()    │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-       ┌───────────────────┴───────────────────┐
-       ▼                                       ▼
-┌───────────────────────────────┐   ┌───────────────────────────────┐
-│     Resend API (HTTPS REST)   │   │     Nodemailer (SMTP)         │
-│  - RESEND_API_KEY             │   │  - SMTP_HOST, SMTP_PORT       │
-│  - High-deliverability inbox  │   │  - SMTP_USER, SMTP_PASS       │
-└───────────────────────────────┘   └───────────────────────────────┘
+│  server/routes/auth.routes.ts                          │
+│   ├── Sends real email via emailService                │
+│   └── Omits raw otp_code from API JSON response        │
+└────────────────────────────────────────────────────────┘
 ```
 
-#### Files to Create & Update
-1. **`server/services/email.service.ts`** *(New)*:
-   - Configures email delivery via Resend API and standard SMTP.
-   - Generates responsive ISO 17025 branded HTML templates for staff registration and password recovery.
-   - Provides safe fallback reporting when external mail services are not configured.
-2. **`server/routes/auth.routes.ts`**:
-   - Hooks `emailService` into `/register`, `/resend-code`, and `/forgot-password`.
-3. **`src/components/auth/OtpVerificationModal.tsx`**:
-   - Adds the on-screen verification backup card with one-click auto-fill, copy button, and delivery status badge.
-4. **`src/components/auth/ForgotPasswordModal.tsx`**:
-   - Adds matching on-screen backup card for password reset codes.
-5. **`.env.example`**:
-   - Documents `RESEND_API_KEY`, `RESEND_FROM`, and `SMTP_*` parameters.
+#### Proposed Changes
+1. **`src/components/auth/OtpVerificationModal.tsx`**:
+   - Remove `activePreviewCode`, `copiedCode`, `handleAutoFill`, `handleCopyCode`, and the backup card JSX block.
+   - Add clean spam folder hint below the recipient email description.
+2. **`src/components/auth/ForgotPasswordModal.tsx`**:
+   - Remove `activePreviewCode`, `handleAutoFillOtp`, `handleCopyCode`, and the backup card JSX block in `step === 'VERIFY_OTP'`.
+   - Add spam folder hint.
+3. **`server/routes/auth.routes.ts`**:
+   - Update `/register`, `/resend-code`, and `/forgot-password` to return status and recipient info without raw `otp_code` in the JSON response.
+4. **`src/services/api.ts` & `src/pages/LoginPage.tsx`**:
+   - Clean up any unused `simulationOtpCode` state variables.
 
 ---
 
-### 5. Verification Plan
+### 4. Verification Plan
 - **Verification Tests**:
-  - Run registration endpoint and verify email delivery pipeline logic.
-  - Test OTP code input, auto-fill, and verification completion.
-  - Run full end-to-end test suite (`npm run test:e2e`).
-  - Run `lint_applet` and `compile_applet` to ensure zero compilation errors.
+  - Test registration flow via curl and verify no `otp_code` is returned in the API response.
+  - Verify email dispatch via `emailService`.
+  - Verify modal UI in browser to confirm zero backup card / auto-fill buttons appear.
+  - Test manual 6-digit code entry and successful account activation.
+  - Run `npm run test:e2e`, `lint_applet`, and `compile_applet`.

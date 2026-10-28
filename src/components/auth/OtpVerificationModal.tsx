@@ -1,18 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  ShieldCheck,
   Mail,
   AlertCircle,
   RefreshCw,
   X,
   Clock,
-  Sparkles,
   ArrowRight,
   CheckCircle2,
-  Copy,
-  Check,
-  Inbox,
-  Send,
+  Info,
 } from 'lucide-react';
 import { Button } from '../common/Button';
 import { api } from '../../services/api';
@@ -31,14 +26,11 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
   onClose,
   email,
   type = 'REGISTRATION',
-  simulationCode,
   onSuccess,
 }) => {
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
-  const [activePreviewCode, setActivePreviewCode] = useState<string | null>(simulationCode || null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [infoNotice, setInfoNotice] = useState<string | null>(null);
   const [secondsRemaining, setSecondsRemaining] = useState<number>(15 * 60); // 15 minutes
@@ -46,20 +38,12 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
 
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Update preview code if prop changes
-  useEffect(() => {
-    if (simulationCode) {
-      setActivePreviewCode(simulationCode);
-    }
-  }, [simulationCode]);
-
   // Focus first input on open
   useEffect(() => {
     if (isOpen) {
       setDigits(['', '', '', '', '', '']);
       setError(null);
       setInfoNotice(null);
-      setCopiedCode(false);
       setSecondsRemaining(15 * 60);
       setResendCooldown(60);
       setTimeout(() => {
@@ -166,23 +150,6 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     }
   };
 
-  const handleAutoFill = () => {
-    if (!activePreviewCode) return;
-    const clean = activePreviewCode.trim().slice(0, 6);
-    const newDigits = clean.split('');
-    while (newDigits.length < 6) newDigits.push('');
-    setDigits(newDigits);
-    setError(null);
-    submitVerification(clean);
-  };
-
-  const handleCopyCode = () => {
-    if (!activePreviewCode) return;
-    navigator.clipboard.writeText(activePreviewCode.trim().slice(0, 6));
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
-
   const handleResend = async () => {
     if (resendCooldown > 0 || isResending) return;
     setIsResending(true);
@@ -190,14 +157,11 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
     setInfoNotice(null);
 
     try {
-      const res = await api.resendCode(email, type);
+      await api.resendCode(email, type);
       setResendCooldown(60);
       setSecondsRemaining(15 * 60);
       setDigits(['', '', '', '', '', '']);
-      if (res.simulation?.otp_code) {
-        setActivePreviewCode(res.simulation.otp_code);
-      }
-      setInfoNotice('A fresh 6-digit verification code has been dispatched.');
+      setInfoNotice('A fresh 6-digit verification code has been dispatched to your email.');
       inputRefs.current[0]?.focus();
     } catch (err: any) {
       setError(err.message || 'Failed to resend code. Please try again shortly.');
@@ -244,7 +208,7 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
             </div>
           </div>
           <p className="text-xs text-blue-100 mt-2 leading-relaxed">
-            We dispatched a 6-digit verification code to{' '}
+            We sent a 6-digit verification code to{' '}
             <strong className="text-white font-mono">{email}</strong>.
           </p>
         </div>
@@ -265,64 +229,16 @@ export const OtpVerificationModal: React.FC<OtpVerificationModalProps> = ({
             </div>
           )}
 
-          {/* ON-SCREEN LAB INBOX BACKUP CARD */}
-          {activePreviewCode && (
-            <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-50/80 to-blue-50/80 border border-indigo-200/80 shadow-xs space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-indigo-900 font-semibold text-xs">
-                  <Inbox className="w-4 h-4 text-indigo-600" />
-                  <span>Lab Mailbox Backup</span>
-                </div>
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-indigo-100/90 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">
-                  <ShieldCheck className="w-3 h-3 text-indigo-600" />
-                  Verified Code
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-lg border border-indigo-100">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs text-slate-500 font-medium">OTP:</span>
-                  <span className="font-mono text-2xl font-black text-indigo-950 tracking-widest selection:bg-indigo-200">
-                    {activePreviewCode.trim().slice(0, 6)}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={handleCopyCode}
-                    className="p-1.5 rounded-md text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-1 text-[11px] font-medium cursor-pointer"
-                    title="Copy code to clipboard"
-                  >
-                    {copiedCode ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700">Copied</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copy</span>
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleAutoFill}
-                    className="px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Auto-Fill</span>
-                  </button>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-500 leading-snug">
-                Dispatched to your email inbox. If your external email filter is delayed, use the auto-fill button above to activate immediately.
+          {/* Standard Email Delivery Notice & Spam Hint */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2.5 text-xs text-slate-600 leading-relaxed">
+            <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <span>Please check your email inbox and enter the 6-digit code below to activate your account.</span>
+              <p className="text-[11px] text-slate-500 mt-1 font-normal">
+                Tip: If you do not see the email within 1–2 minutes, please check your spam or junk folder.
               </p>
             </div>
-          )}
+          </div>
 
           {/* 6 Digit Inputs */}
           <div>

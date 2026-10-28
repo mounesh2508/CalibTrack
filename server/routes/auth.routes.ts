@@ -88,9 +88,7 @@ router.post('/register', async (req: Request, res: Response) => {
       type: 'REGISTRATION',
     });
 
-    const statusMessage = emailResult.dispatched
-      ? `A 6-digit verification code has been dispatched to ${normalizedEmail}.`
-      : `Verification code generated for ${normalizedEmail}. Use the on-screen lab backup to complete registration.`;
+    const statusMessage = `A 6-digit verification code has been dispatched to ${normalizedEmail}. Please check your email inbox.`;
 
     return res.status(201).json({
       success: true,
@@ -106,13 +104,6 @@ router.post('/register', async (req: Request, res: Response) => {
       email_delivery: {
         dispatched: emailResult.dispatched,
         provider: emailResult.provider,
-        message: emailResult.message,
-      },
-      simulation: {
-        otp_code: code,
-        expires_in_minutes: 15,
-        mode: emailResult.dispatched ? 'EMAIL_DISPATCHED' : 'ON_SCREEN_BACKUP',
-        recipient: normalizedEmail,
       },
     });
   } catch (err: any) {
@@ -332,9 +323,7 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       type: 'PASSWORD_RESET',
     });
 
-    const statusMessage = emailResult.dispatched
-      ? `A 6-digit password reset code has been sent to ${normalizedEmail}.`
-      : `Password reset code generated for ${normalizedEmail}. Use the on-screen lab backup to proceed.`;
+    const statusMessage = `A 6-digit password reset code has been sent to ${normalizedEmail}. Please check your email inbox.`;
 
     return res.json({
       success: true,
@@ -343,13 +332,6 @@ router.post('/forgot-password', async (req: Request, res: Response) => {
       email_delivery: {
         dispatched: emailResult.dispatched,
         provider: emailResult.provider,
-        message: emailResult.message,
-      },
-      simulation: {
-        otp_code: code,
-        expires_in_minutes: 15,
-        mode: emailResult.dispatched ? 'EMAIL_DISPATCHED' : 'ON_SCREEN_BACKUP',
-        recipient: normalizedEmail,
       },
     });
   } catch (err: any) {
@@ -472,9 +454,7 @@ router.post('/resend-code', async (req: Request, res: Response) => {
       type: targetType,
     });
 
-    const statusMessage = emailResult.dispatched
-      ? `A fresh 6-digit verification code has been dispatched to ${normalizedEmail}.`
-      : `A fresh 6-digit code has been generated. Use the on-screen lab backup to proceed.`;
+    const statusMessage = `A fresh 6-digit verification code has been dispatched to ${normalizedEmail}. Please check your email inbox.`;
 
     return res.json({
       success: true,
@@ -482,13 +462,6 @@ router.post('/resend-code', async (req: Request, res: Response) => {
       email_delivery: {
         dispatched: emailResult.dispatched,
         provider: emailResult.provider,
-        message: emailResult.message,
-      },
-      simulation: {
-        otp_code: freshCode,
-        expires_in_minutes: 15,
-        mode: emailResult.dispatched ? 'EMAIL_DISPATCHED' : 'ON_SCREEN_BACKUP',
-        recipient: normalizedEmail,
       },
     });
   } catch (err: any) {

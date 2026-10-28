@@ -77,14 +77,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
           return;
         }
 
-        const regRes = await api.register(name, email, password);
+        await api.register(name, email, password);
         setConfirmPassword('');
         setPendingOtpEmail(email);
-        const otpCode = regRes.simulation?.otp_code || null;
-        setSimulationOtpCode(otpCode);
-        if (regRes.simulation) {
-          setSimulationData(regRes.simulation);
-        }
+        setSimulationOtpCode(null);
+        setSimulationData(null);
         // Immediately open 6-digit OTP verification modal
         setIsOtpModalOpen(true);
         setSuccessNotice('Staff registration initiated. Please enter the 6-digit verification code sent to your email.');
@@ -453,7 +450,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
           onClose={() => setIsOtpModalOpen(false)}
           email={pendingOtpEmail || email}
           type="REGISTRATION"
-          simulationCode={simulationOtpCode}
           onSuccess={(data) => {
             setIsOtpModalOpen(false);
             setIsRegisterMode(false);

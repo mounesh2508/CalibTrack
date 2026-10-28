@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for real email delivery (Resend API & SMTP) and on-screen verification code backup with one-click auto-fill for staff registration and password recovery.",
-  "updatedAt":  "2026-10-28T05:56:36.936717030Z",
+  "summary":  "Implementation plan to remove the lab mailbox backup card and auto-fill feature from both registration and password recovery verification modals, establishing strict external email verification with clean delivery notices and spam folder guidance.",
+  "updatedAt":  "2026-10-28T06:24:20.184183805Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
