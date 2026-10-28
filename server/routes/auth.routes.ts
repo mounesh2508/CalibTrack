@@ -394,9 +394,9 @@ router.post('/reset-password', (req: Request, res: Response) => {
 });
 
 // -----------------------------------------------------------------------------
-// POST /api/auth/resend-code
+// POST /api/auth/resend-code & POST /api/auth/resend-verification
 // -----------------------------------------------------------------------------
-router.post('/resend-code', async (req: Request, res: Response) => {
+const handleResendOtp = async (req: Request, res: Response) => {
   try {
     const body = parseSafeBody(req);
     const email = typeof body.email === 'string' ? body.email.trim() : '';
@@ -446,7 +446,7 @@ router.post('/resend-code', async (req: Request, res: Response) => {
     lastSentTimestamps.set(key, Date.now());
     console.log(`[CalibTrack Auth] Fresh OTP re-sent for ${normalizedEmail} (${targetType}): ${freshCode}`);
 
-    // Dispatch real email via Resend or SMTP with fail-safe fallback
+    // Dispatch real email via Gmail SMTP with fail-safe fallback
     const emailResult = await emailService.sendVerificationEmail({
       to: normalizedEmail,
       name: existingOtp?.user_data?.name,
@@ -468,7 +468,10 @@ router.post('/resend-code', async (req: Request, res: Response) => {
     console.error('[CalibTrack Auth] Resend code error:', err);
     return res.status(400).json({ detail: err.message || 'Failed to resend code.' });
   }
-});
+};
+
+router.post('/resend-code', handleResendOtp);
+router.post('/resend-verification', handleResendOtp);
 
 // -----------------------------------------------------------------------------
 // POST /api/auth/login

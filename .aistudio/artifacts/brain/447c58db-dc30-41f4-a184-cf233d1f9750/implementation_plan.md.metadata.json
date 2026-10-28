@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to configure Gmail SMTP with the user's Google App Password for unrestricted global email delivery to any recipient, prioritizing SMTP over the Resend sandbox.",
-  "updatedAt":  "2026-10-28T06:59:40.539841390Z",
+  "summary":  "Implementation plan to fix Vercel FUNCTION_INVOCATION_FAILED on resend email, ensure Gmail SMTP credentials work reliably in Vercel serverless functions, and support the /auth/resend-verification route alias.",
+  "updatedAt":  "2026-10-28T07:11:30.299779125Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

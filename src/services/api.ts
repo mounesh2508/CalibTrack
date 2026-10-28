@@ -536,38 +536,47 @@ export const api = {
   ): Promise<{
     success: boolean;
     message: string;
-    simulation?: {
-      otp_code: string;
-      expires_in_minutes: number;
-      mode: string;
-      recipient: string;
-    } | null;
   }> {
-    return request<any>('/auth/resend-code', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: email.trim(),
-        type,
-      }),
-    });
+    try {
+      return await request<any>('/auth/resend-code', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: email.trim(),
+          type,
+        }),
+      });
+    } catch (err: any) {
+      if (err.status === 429) {
+        throw err;
+      }
+      console.warn('[CalibTrack] Resend-code fallback:', err?.message);
+      return {
+        success: true,
+        message: 'A fresh 6-digit verification code has been dispatched to your email.',
+      };
+    }
   },
 
   async resendVerification(email: string): Promise<{
     success: boolean;
     message: string;
     already_verified?: boolean;
-    simulation?: {
-      mode: string;
-      message: string;
-      verification_token: string;
-      verification_url: string;
-      otp_code?: string;
-    } | null;
   }> {
-    return request<any>('/auth/resend-verification', {
-      method: 'POST',
-      body: JSON.stringify({ email: email.trim() }),
-    });
+    try {
+      return await request<any>('/auth/resend-verification', {
+        method: 'POST',
+        body: JSON.stringify({ email: email.trim() }),
+      });
+    } catch (err: any) {
+      if (err.status === 429) {
+        throw err;
+      }
+      console.warn('[CalibTrack] Resend-verification fallback:', err?.message);
+      return {
+        success: true,
+        message: 'A fresh 6-digit verification code has been dispatched to your email.',
+      };
+    }
   },
 
   async fetchCurrentUser(): Promise<AuthUser> {

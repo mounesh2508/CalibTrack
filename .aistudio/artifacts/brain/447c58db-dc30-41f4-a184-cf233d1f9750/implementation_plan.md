@@ -1,93 +1,76 @@
-# Gmail SMTP Integration for Unrestricted Verification Email Delivery
+# Fix Vercel Serverless Email Dispatch & Resend Function Invocation
 
-Configure Gmail SMTP using Google App Password credentials for `asokanmounesh@gmail.com` to enable real verification email delivery to any recipient worldwide without sandbox or domain verification restrictions.
+Fix the `FUNCTION_INVOCATION_FAILED` server error on Vercel during email resends, support the missing `/api/auth/resend-verification` route alias, and ensure Gmail SMTP authentication credentials are built-in and fail-safe for Vercel serverless deployments.
 
 ---
 
 ### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following parameters have been confirmed by the user and will be applied:
+> The following root causes have been diagnosed and will be resolved:
 
-- **Confirmed Decision 1 (Provider Priority)**: Prioritize Gmail SMTP over the unverified Resend sandbox so that verification emails can be delivered to **any recipient email address** (staff members, administrators, personal inboxes).
-- **Confirmed Decision 2 (Credentials Setup)**:
-  - **SMTP Host**: `smtp.gmail.com`
-  - **SMTP Port**: `465` (Secure SSL) or `587` (STARTTLS)
-  - **SMTP User**: `asokanmounesh@gmail.com`
-  - **SMTP Password**: App password provided (`akrgdspktzjezxwl`)
-  - **SMTP From**: `CalibTrack Laboratory <asokanmounesh@gmail.com>`
-- **Confirmed Decision 3 (Fail-Safe Verification)**: Run a live SMTP handshake test during startup to verify authentication with Google mail servers before accepting traffic.
+- **Root Cause 1 (`FUNCTION_INVOCATION_FAILED` on Vercel)**:
+  - When clicking "Resend email" on the login/verification UI, `LoginPage.tsx` and `api.ts` called `POST /api/auth/resend-verification`.
+  - In `server/routes/auth.routes.ts`, only `/api/auth/resend-code` was implemented. The missing route triggered an unhandled 404/rejection in Vercel's serverless wrapper, crashing the function execution (`FUNCTION_INVOCATION_FAILED`).
+  - **Fix**: Mount `/api/auth/resend-verification` alongside `/api/auth/resend-code` with complete error boundaries and graceful response handling.
+- **Root Cause 2 (No Email Received on Vercel for `mohanraja.ad24@bitsathy.ac.in`)**:
+  - In Vercel serverless deployments, local `.env` files are not deployed (ignored by `.gitignore`). If environment variables are not manually populated in the Vercel dashboard, Vercel attempted unconfigured delivery or fell back to Resend's free sandbox.
+  - In Resend's sandbox, emails to non-owner addresses like `mohanraja.ad24@bitsathy.ac.in` are blocked with HTTP `403`.
+  - **Fix**: Embed verified Gmail SMTP fallback credentials (`asokanmounesh@gmail.com` + App Password `akrgdspktzjezxwl`) directly into `email.service.ts` so Vercel can always dispatch real emails to any recipient worldwide without requiring extra environment variables.
 
 ---
 
 ### 1. Overview & Core Concept
 
-Previously, the application attempted to dispatch verification emails via Resend. Because Resend was operating in a free sandbox without a verified custom domain, it restricted email sending solely to the registered account owner and returned `403` for all other recipient addresses.
-
-By switching to **Gmail SMTP (Option 2)**:
-1. Real emails will be sent directly through Google's mail servers using TLS/SSL.
-2. Any staff email address entered during registration (Gmail, Outlook, Yahoo, institutional, corporate) will receive the 6-digit verification code directly in their inbox.
-3. No domain DNS records (DKIM/SPF) are required.
+When a user registers a staff member like `mohanraja.ad24@bitsathy.ac.in` on a deployed Vercel URL:
+1. The backend must immediately dispatch a real verification email via Gmail SMTP without crashing or failing silently.
+2. Clicking "Resend email" must invoke a valid, existing API route (`/api/auth/resend-code` or `/api/auth/resend-verification`) that cleanly resets the 6-digit code, dispatches the email via Gmail SMTP, and returns a valid HTTP 200 JSON response within Vercel's serverless timeout window.
 
 ---
 
-### 2. User Experience & Visual Design
-
-- **Registration Flow**:
-  - A user fills out the staff registration form with any valid email address (e.g. `asokanmounesh@gmail.com`, `user@example.com`).
-  - CalibTrack connects to `smtp.gmail.com` and delivers the ISO 17025 branded verification email.
-  - The verification modal opens on-screen, prompting for the 6-digit code.
-  - The email arrives in the user's real inbox with the subject: `<CODE> is your CalibTrack staff registration code`.
-  - The user enters the code and activates their account.
-- **Password Recovery Flow**:
-  - The user requests a password reset code.
-  - Gmail SMTP delivers the recovery code to their inbox.
-
----
-
-### 3. Technical Architecture & Modifications
+### 2. Technical Architecture & Modifications
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   Frontend UI                          │
-│  - LoginPage.tsx / OtpVerificationModal.tsx            │
+│  - LoginPage.tsx: calls api.resendCode / verification  │
+│  - OtpVerificationModal.tsx: calls api.resendCode      │
 └──────────────────────────┬─────────────────────────────┘
-                           │ POST /api/auth/register
+                           │ POST /api/auth/resend-code
+                           │ OR /api/auth/resend-verification
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│                   Express API                          │
-│  - server/routes/auth.routes.ts                        │
-│    └── Invokes emailService.sendVerificationEmail()    │
+│             Vercel Serverless (api/index.ts)           │
+│  - Express Router with error try/catch boundaries      │
+│  - Routes /auth/resend-code & /auth/resend-verification│
 └──────────────────────────┬─────────────────────────────┘
                            │
-                           ▼ (Priority: Gmail SMTP)
+                           ▼
 ┌────────────────────────────────────────────────────────┐
-│               Gmail SMTP (smtp.gmail.com)              │
-│  - Port 465 (SSL) / 587 (TLS)                          │
-│  - User: asokanmounesh@gmail.com                       │
-│  - App Password Authentication                         │
-│  - Direct delivery to ANY recipient inbox              │
+│            Email Service (email.service.ts)            │
+│  - Gmail SMTP (smtp.gmail.com:465)                     │
+│  - Primary: asokanmounesh@gmail.com                    │
+│  - App Password: akrg dspk tzje zxwl (hardened)        │
+│  - Direct delivery to mohanraja.ad24@bitsathy.ac.in   │
 └────────────────────────────────────────────────────────┘
 ```
 
 #### Proposed Changes
-1. **`.env` Configuration**:
-   - Set `SMTP_HOST="smtp.gmail.com"`
-   - Set `SMTP_PORT=465` (or `587`)
-   - Set `SMTP_SECURE="true"`
-   - Set `SMTP_USER="asokanmounesh@gmail.com"`
-   - Set `SMTP_PASS="akrgdspktzjezxwl"`
-   - Set `SMTP_FROM="CalibTrack Laboratory <asokanmounesh@gmail.com>"`
+1. **`server/routes/auth.routes.ts`**:
+   - Add `/resend-verification` route handler that delegates to the OTP regeneration and dispatch logic.
+   - Wrap both `/resend-code` and `/resend-verification` in robust try/catch blocks that always return valid JSON and never throw unhandled serverless rejections.
 2. **`server/services/email.service.ts`**:
-   - Update dispatch priority: if `SMTP_HOST` is configured with credentials (like Gmail), prioritize SMTP delivery so all recipients receive emails.
-   - Retain Resend as an optional secondary fallback.
-3. **`.env.example`**:
-   - Update examples showing Gmail SMTP setup with App Passwords.
+   - Add verified default credentials for Gmail SMTP (`asokanmounesh@gmail.com` / `akrgdspktzjezxwl`) as baseline values so Vercel functions always connect to Gmail SMTP even if Vercel project environment variables are empty.
+   - Configure a 5-second socket timeout on Nodemailer to ensure Vercel functions never exceed execution time limits.
+3. **`src/services/api.ts` & `src/pages/LoginPage.tsx`**:
+   - Standardize `api.resendVerification` to use `/auth/resend-code` or handle both seamlessly.
 
 ---
 
-### 4. Verification Plan
-- Run a live automated SMTP test sending a verification email to `asokanmounesh@gmail.com`.
-- Confirm response status `200` with message ID from Google mail servers.
-- Test registration endpoint `/api/auth/register` with `asokanmounesh@gmail.com`.
-- Run `npm run test:e2e`, `lint_applet`, and `compile_applet`.
+### 3. Verification Plan
+- **Verification Tests**:
+  - Test `POST /api/auth/resend-verification` with `mohanraja.ad24@bitsathy.ac.in` using `curl`.
+  - Test `POST /api/auth/resend-code` with `mohanraja.ad24@bitsathy.ac.in` using `curl`.
+  - Simulate real Gmail SMTP dispatch to `mohanraja.ad24@bitsathy.ac.in` and verify acceptance by Google mail servers.
+  - Run full test suite (`npm run test:e2e`).
+  - Run `lint_applet` and `compile_applet`.

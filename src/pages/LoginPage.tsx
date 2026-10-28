@@ -105,13 +105,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, sessionNotice, on
     if (!email.trim()) return;
     setIsResending(true);
     try {
-      const res = await api.resendVerification(email);
-      setSuccessNotice(res.message || 'A fresh verification link has been sent to your email.');
-      if (res.simulation) {
-        setSimulationData(res.simulation);
-      }
+      const res = await api.resendCode(email.trim(), 'REGISTRATION');
+      setPendingOtpEmail(email.trim());
+      setSuccessNotice(res.message || 'A fresh 6-digit verification code has been dispatched to your email.');
       setIsUnverified(false);
       setError(null);
+      setIsOtpModalOpen(true);
     } catch (err: any) {
       setError(err.message || 'Failed to resend verification email.');
     } finally {

@@ -27,48 +27,52 @@ export class EmailService {
   constructor() {
     this.resendApiKey = process.env.RESEND_API_KEY;
     this.resendFrom = process.env.RESEND_FROM || 'CalibTrack Metrology <onboarding@resend.dev>';
-    this.smtpFrom = process.env.SMTP_FROM || 'CalibTrack Laboratory <no-reply@calibtrack.lab>';
+    this.smtpFrom = process.env.SMTP_FROM || 'CalibTrack Laboratory <asokanmounesh@gmail.com>';
 
     this.initSmtp();
   }
 
   private initSmtp() {
     const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const user = process.env.SMTP_USER;
-    const rawPass = process.env.SMTP_PASS;
-    const pass = rawPass ? rawPass.replace(/\s+/g, '') : undefined;
+    const user = process.env.SMTP_USER || 'asokanmounesh@gmail.com';
+    const rawPass = process.env.SMTP_PASS || 'akrgdspktzjezxwl';
+    const pass = rawPass.replace(/\s+/g, '');
     const port = parseInt(process.env.SMTP_PORT || '465', 10);
     const secure = process.env.SMTP_SECURE !== 'false';
 
-    if (host && user && pass) {
-      try {
-        if (host.includes('gmail')) {
-          this.smtpTransporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-              user,
-              pass,
-            },
-          });
-        } else {
-          this.smtpTransporter = nodemailer.createTransport({
-            host,
-            port,
-            secure,
-            auth: {
-              user,
-              pass,
-            },
-            tls: {
-              rejectUnauthorized: false,
-            },
-          });
-        }
-        console.log(`[EmailService] SMTP transporter configured for host: ${host} (User: ${user})`);
-      } catch (err: any) {
-        console.warn('[EmailService] Failed to initialize SMTP transporter:', err?.message);
-        this.smtpTransporter = null;
+    try {
+      if (host.includes('gmail')) {
+        this.smtpTransporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user,
+            pass,
+          },
+          connectionTimeout: 7000,
+          greetingTimeout: 6000,
+          socketTimeout: 8000,
+        });
+      } else {
+        this.smtpTransporter = nodemailer.createTransport({
+          host,
+          port,
+          secure,
+          auth: {
+            user,
+            pass,
+          },
+          tls: {
+            rejectUnauthorized: false,
+          },
+          connectionTimeout: 7000,
+          greetingTimeout: 6000,
+          socketTimeout: 8000,
+        });
       }
+      console.log(`[EmailService] SMTP transporter initialized for ${host} (User: ${user})`);
+    } catch (err: any) {
+      console.warn('[EmailService] Failed to initialize SMTP transporter:', err?.message);
+      this.smtpTransporter = null;
     }
   }
 
