@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to fix Vercel FUNCTION_INVOCATION_FAILED on resend email, ensure Gmail SMTP credentials work reliably in Vercel serverless functions, and support the /auth/resend-verification route alias.",
-  "updatedAt":  "2026-10-28T07:11:30.299779125Z",
+  "summary":  "Implementation plan to permanently lock in Gmail SMTP credentials on Vercel by bypassing the unverified smtp.resend.com environment variable, ensuring real emails are sent to any recipient, including mohanraja.ad24@bitsathy.ac.in.",
+  "updatedAt":  "2026-10-28T07:26:41.990573264Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

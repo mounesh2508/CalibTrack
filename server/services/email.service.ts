@@ -33,45 +33,27 @@ export class EmailService {
   }
 
   private initSmtp() {
-    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
-    const user = process.env.SMTP_USER || 'asokanmounesh@gmail.com';
-    const rawPass = process.env.SMTP_PASS || 'akrgdspktzjezxwl';
-    const pass = rawPass.replace(/\s+/g, '');
-    const port = parseInt(process.env.SMTP_PORT || '465', 10);
-    const secure = process.env.SMTP_SECURE !== 'false';
+    // Explicitly bind Gmail SMTP with user Google App Password
+    const user = 'asokanmounesh@gmail.com';
+    const pass = 'akrgdspktzjezxwl';
+    this.smtpFrom = 'CalibTrack Laboratory <asokanmounesh@gmail.com>';
 
     try {
-      if (host.includes('gmail')) {
-        this.smtpTransporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user,
-            pass,
-          },
-          connectionTimeout: 7000,
-          greetingTimeout: 6000,
-          socketTimeout: 8000,
-        });
-      } else {
-        this.smtpTransporter = nodemailer.createTransport({
-          host,
-          port,
-          secure,
-          auth: {
-            user,
-            pass,
-          },
-          tls: {
-            rejectUnauthorized: false,
-          },
-          connectionTimeout: 7000,
-          greetingTimeout: 6000,
-          socketTimeout: 8000,
-        });
-      }
-      console.log(`[EmailService] SMTP transporter initialized for ${host} (User: ${user})`);
+      this.smtpTransporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 465,
+        secure: true,
+        auth: {
+          user,
+          pass,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 8000,
+        socketTimeout: 12000,
+      });
+      console.log(`[EmailService] Gmail SMTP transporter bound on port 465 for ${user}`);
     } catch (err: any) {
-      console.warn('[EmailService] Failed to initialize SMTP transporter:', err?.message);
+      console.warn('[EmailService] Failed to initialize Gmail SMTP transporter:', err?.message);
       this.smtpTransporter = null;
     }
   }
@@ -231,19 +213,49 @@ export class EmailService {
     html: string
   ): Promise<{ success: boolean; error?: string }> {
     if (!this.smtpTransporter) {
-      return { success: false, error: 'SMTP transporter is not configured.' };
+      this.initSmtp();
     }
 
+    // Try Port 465 (Direct SSL)
+    if (this.smtpTransporter) {
+      try {
+        await this.smtpTransporter.sendMail({
+          from: this.smtpFrom,
+          to,
+          subject,
+          html,
+        });
+        return { success: true };
+      } catch (err: any) {
+        console.warn(`[EmailService] Port 465 send failed (${err?.message}). Attempting port 587 STARTTLS fallback...`);
+      }
+    }
+
+    // Fallback: Port 587 (STARTTLS)
     try {
-      await this.smtpTransporter.sendMail({
+      const fallbackTransporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: 'asokanmounesh@gmail.com',
+          pass: 'akrgdspktzjezxwl',
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 8000,
+        socketTimeout: 12000,
+      });
+
+      await fallbackTransporter.sendMail({
         from: this.smtpFrom,
         to,
         subject,
         html,
       });
       return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'SMTP delivery failed' };
+    } catch (fallbackErr: any) {
+      console.error('[EmailService] Both Gmail SMTP ports (465 & 587) failed:', fallbackErr?.message);
+      return { success: false, error: fallbackErr?.message || 'Gmail SMTP delivery failed' };
     }
   }
 
