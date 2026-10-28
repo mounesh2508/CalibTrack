@@ -1,7 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 export interface EmailSendResult {
   dispatched: boolean;
@@ -33,27 +33,38 @@ export class EmailService {
   }
 
   private initSmtp() {
-    const host = process.env.SMTP_HOST;
+    const host = process.env.SMTP_HOST || 'smtp.gmail.com';
     const user = process.env.SMTP_USER;
-    const pass = process.env.SMTP_PASS;
-    const port = parseInt(process.env.SMTP_PORT || '587', 10);
-    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const rawPass = process.env.SMTP_PASS;
+    const pass = rawPass ? rawPass.replace(/\s+/g, '') : undefined;
+    const port = parseInt(process.env.SMTP_PORT || '465', 10);
+    const secure = process.env.SMTP_SECURE !== 'false';
 
     if (host && user && pass) {
       try {
-        this.smtpTransporter = nodemailer.createTransport({
-          host,
-          port,
-          secure,
-          auth: {
-            user,
-            pass,
-          },
-          tls: {
-            rejectUnauthorized: false,
-          },
-        });
-        console.log(`[EmailService] SMTP transporter configured for host: ${host}:${port}`);
+        if (host.includes('gmail')) {
+          this.smtpTransporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+              user,
+              pass,
+            },
+          });
+        } else {
+          this.smtpTransporter = nodemailer.createTransport({
+            host,
+            port,
+            secure,
+            auth: {
+              user,
+              pass,
+            },
+            tls: {
+              rejectUnauthorized: false,
+            },
+          });
+        }
+        console.log(`[EmailService] SMTP transporter configured for host: ${host} (User: ${user})`);
       } catch (err: any) {
         console.warn('[EmailService] Failed to initialize SMTP transporter:', err?.message);
         this.smtpTransporter = null;
@@ -163,11 +174,14 @@ export class EmailService {
   private async sendViaResend(
     to: string,
     subject: string,
-    html: string
+    html: string,
+    senderOverride?: string
   ): Promise<{ success: boolean; id?: string; error?: string }> {
     if (!this.resendApiKey) {
       return { success: false, error: 'RESEND_API_KEY is not configured.' };
     }
+
+    const fromAddress = senderOverride || this.resendFrom || 'CalibTrack Metrology <onboarding@resend.dev>';
 
     try {
       const response = await fetch('https://api.resend.com/emails', {
@@ -177,7 +191,7 @@ export class EmailService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: this.resendFrom,
+          from: fromAddress,
           to: [to],
           subject,
           html,
@@ -186,6 +200,12 @@ export class EmailService {
 
       const data: any = await response.json();
       if (!response.ok) {
+        // If domain is not verified, automatically retry with official Resend testing domain
+        if (!senderOverride && fromAddress !== 'CalibTrack Metrology <onboarding@resend.dev>' && data.message?.includes('domain is not verified')) {
+          console.warn('[EmailService] Sender domain not verified in Resend. Retrying with official testing domain (onboarding@resend.dev)...');
+          return this.sendViaResend(to, subject, html, 'CalibTrack Metrology <onboarding@resend.dev>');
+        }
+
         return {
           success: false,
           error: data.message || `Resend API returned status ${response.status}`,
@@ -235,7 +255,23 @@ export class EmailService {
 
     const html = this.generateHtml(payload);
 
-    // 1. Try Resend API if API key is configured
+    // 1. Prioritize SMTP (Gmail SMTP with App Password sends to ANY recipient worldwide without sandbox limits)
+    if (this.smtpTransporter) {
+      const smtpRes = await this.sendViaSmtp(payload.to, subject, html);
+      if (smtpRes.success) {
+        console.log(`[EmailService] Verification email sent to ${payload.to} via Gmail SMTP`);
+        return {
+          dispatched: true,
+          provider: 'smtp',
+          recipient: payload.to,
+          message: `Verification code sent to ${payload.to} via Gmail SMTP.`,
+        };
+      } else {
+        console.warn(`[EmailService] SMTP delivery failed: ${smtpRes.error}. Attempting Resend fallback...`);
+      }
+    }
+
+    // 2. Try Resend API as secondary fallback
     if (this.resendApiKey) {
       const resendRes = await this.sendViaResend(payload.to, subject, html);
       if (resendRes.success) {
@@ -247,33 +283,17 @@ export class EmailService {
           message: `Verification code sent to ${payload.to} via Resend.`,
         };
       } else {
-        console.warn(`[EmailService] Resend API failed: ${resendRes.error}. Attempting SMTP fallback...`);
+        console.warn(`[EmailService] Resend API failed: ${resendRes.error}`);
       }
     }
 
-    // 2. Try SMTP if configured
-    if (this.smtpTransporter) {
-      const smtpRes = await this.sendViaSmtp(payload.to, subject, html);
-      if (smtpRes.success) {
-        console.log(`[EmailService] Verification email sent to ${payload.to} via SMTP`);
-        return {
-          dispatched: true,
-          provider: 'smtp',
-          recipient: payload.to,
-          message: `Verification code sent to ${payload.to} via SMTP.`,
-        };
-      } else {
-        console.warn(`[EmailService] SMTP delivery failed: ${smtpRes.error}`);
-      }
-    }
-
-    // 3. Fallback: Simulated in-app delivery
-    console.log(`[EmailService] Live email services not configured or failed. Code ${payload.code} for ${payload.to} available via on-screen lab inbox backup.`);
+    // 3. Fallback: Logged in-app delivery
+    console.log(`[EmailService] Live email services failed. Code ${payload.code} for ${payload.to}.`);
     return {
       dispatched: false,
       provider: 'simulated',
       recipient: payload.to,
-      message: `Verification code generated. Enter the code using the on-screen lab inbox backup.`,
+      message: `Verification code generated for ${payload.to}.`,
     };
   }
 }

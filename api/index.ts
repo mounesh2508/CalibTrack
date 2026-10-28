@@ -5,7 +5,7 @@ import { errorHandler } from '../server/middleware/errorHandler';
 import apiRouter from '../server/routes';
 import { initDatabase, memoryStore } from '../server/database/config';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 

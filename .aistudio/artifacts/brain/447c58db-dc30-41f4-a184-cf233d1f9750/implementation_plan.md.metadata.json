@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to remove the lab mailbox backup card and auto-fill feature from both registration and password recovery verification modals, establishing strict external email verification with clean delivery notices and spam folder guidance.",
-  "updatedAt":  "2026-10-28T06:24:20.184183805Z",
+  "summary":  "Implementation plan to configure Gmail SMTP with the user's Google App Password for unrestricted global email delivery to any recipient, prioritizing SMTP over the Resend sandbox.",
+  "updatedAt":  "2026-10-28T06:59:40.539841390Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

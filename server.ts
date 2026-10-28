@@ -9,7 +9,7 @@ import { spawn } from 'child_process';
 import apiRouter from './server/routes';
 import { initDatabase } from './server/database/config';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
