@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getPool, isFallback, memoryStore } from '../database/config';
 import { User, VerificationOtp } from '../models';
+import { emailService } from '../services/email.service';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ function parseSafeBody(req: Request): any {
 // -----------------------------------------------------------------------------
 // POST /api/auth/register
 // -----------------------------------------------------------------------------
-router.post('/register', (req: Request, res: Response) => {
+router.post('/register', async (req: Request, res: Response) => {
   try {
     const body = parseSafeBody(req);
     const name = typeof body.name === 'string' ? body.name.trim() : '';
@@ -79,9 +80,21 @@ router.post('/register', (req: Request, res: Response) => {
 
     console.log(`[CalibTrack Auth] Registration OTP generated for ${normalizedEmail}: ${code}`);
 
+    // Dispatch external email asynchronously via Resend or SMTP with fail-safe fallback
+    const emailResult = await emailService.sendVerificationEmail({
+      to: normalizedEmail,
+      name,
+      code,
+      type: 'REGISTRATION',
+    });
+
+    const statusMessage = emailResult.dispatched
+      ? `A 6-digit verification code has been dispatched to ${normalizedEmail}.`
+      : `Verification code generated for ${normalizedEmail}. Use the on-screen lab backup to complete registration.`;
+
     return res.status(201).json({
       success: true,
-      message: 'A 6-digit verification code has been dispatched to your email address.',
+      message: statusMessage,
       email: normalizedEmail,
       is_email_verified: false,
       user: {
@@ -90,10 +103,15 @@ router.post('/register', (req: Request, res: Response) => {
         email: normalizedEmail,
         role: 'TECHNICIAN',
       },
+      email_delivery: {
+        dispatched: emailResult.dispatched,
+        provider: emailResult.provider,
+        message: emailResult.message,
+      },
       simulation: {
         otp_code: code,
         expires_in_minutes: 15,
-        mode: 'GMAIL_PREVIEW',
+        mode: emailResult.dispatched ? 'EMAIL_DISPATCHED' : 'ON_SCREEN_BACKUP',
         recipient: normalizedEmail,
       },
     });
@@ -254,7 +272,7 @@ router.post('/verify-code', (req: Request, res: Response) => {
 // -----------------------------------------------------------------------------
 // POST /api/auth/forgot-password
 // -----------------------------------------------------------------------------
-router.post('/forgot-password', (req: Request, res: Response) => {
+router.post('/forgot-password', async (req: Request, res: Response) => {
   try {
     const body = parseSafeBody(req);
     const email = typeof body.email === 'string' ? body.email.trim() : '';
@@ -306,14 +324,31 @@ router.post('/forgot-password', (req: Request, res: Response) => {
 
     console.log(`[CalibTrack Auth] Password Reset OTP generated for ${normalizedEmail}: ${code}`);
 
+    // Dispatch real email via Resend or SMTP with fail-safe fallback
+    const emailResult = await emailService.sendVerificationEmail({
+      to: normalizedEmail,
+      name: user?.name,
+      code,
+      type: 'PASSWORD_RESET',
+    });
+
+    const statusMessage = emailResult.dispatched
+      ? `A 6-digit password reset code has been sent to ${normalizedEmail}.`
+      : `Password reset code generated for ${normalizedEmail}. Use the on-screen lab backup to proceed.`;
+
     return res.json({
       success: true,
-      message: 'A 6-digit password reset code has been sent to your email address.',
+      message: statusMessage,
       email: normalizedEmail,
+      email_delivery: {
+        dispatched: emailResult.dispatched,
+        provider: emailResult.provider,
+        message: emailResult.message,
+      },
       simulation: {
         otp_code: code,
         expires_in_minutes: 15,
-        mode: 'GMAIL_PREVIEW',
+        mode: emailResult.dispatched ? 'EMAIL_DISPATCHED' : 'ON_SCREEN_BACKUP',
         recipient: normalizedEmail,
       },
     });
@@ -379,7 +414,7 @@ router.post('/reset-password', (req: Request, res: Response) => {
 // -----------------------------------------------------------------------------
 // POST /api/auth/resend-code
 // -----------------------------------------------------------------------------
-router.post('/resend-code', (req: Request, res: Response) => {
+router.post('/resend-code', async (req: Request, res: Response) => {
   try {
     const body = parseSafeBody(req);
     const email = typeof body.email === 'string' ? body.email.trim() : '';
@@ -429,13 +464,30 @@ router.post('/resend-code', (req: Request, res: Response) => {
     lastSentTimestamps.set(key, Date.now());
     console.log(`[CalibTrack Auth] Fresh OTP re-sent for ${normalizedEmail} (${targetType}): ${freshCode}`);
 
+    // Dispatch real email via Resend or SMTP with fail-safe fallback
+    const emailResult = await emailService.sendVerificationEmail({
+      to: normalizedEmail,
+      name: existingOtp?.user_data?.name,
+      code: freshCode,
+      type: targetType,
+    });
+
+    const statusMessage = emailResult.dispatched
+      ? `A fresh 6-digit verification code has been dispatched to ${normalizedEmail}.`
+      : `A fresh 6-digit code has been generated. Use the on-screen lab backup to proceed.`;
+
     return res.json({
       success: true,
-      message: 'A fresh 6-digit verification code has been dispatched to your email.',
+      message: statusMessage,
+      email_delivery: {
+        dispatched: emailResult.dispatched,
+        provider: emailResult.provider,
+        message: emailResult.message,
+      },
       simulation: {
         otp_code: freshCode,
         expires_in_minutes: 15,
-        mode: 'GMAIL_PREVIEW',
+        mode: emailResult.dispatched ? 'EMAIL_DISPATCHED' : 'ON_SCREEN_BACKUP',
         recipient: normalizedEmail,
       },
     });

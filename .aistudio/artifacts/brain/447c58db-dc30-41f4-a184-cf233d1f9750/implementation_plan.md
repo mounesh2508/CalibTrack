@@ -1,104 +1,113 @@
-# Vercel Deployment Readiness & End-to-End Verification Plan
+# CalibTrack Real Email Delivery & Verification Code Backup System
 
-Prepare CalibTrack for production deployment on Vercel with external PostgreSQL / MySQL database connectivity, serverless API optimizations, automated end-to-end test verification, and complete deployment configuration.
+Deliver real verification emails to registered staff inboxes using Resend API and standard SMTP, paired with an instant on-screen lab inbox backup and one-click OTP auto-fill to guarantee seamless onboarding across all deployment environments.
 
 ---
 
-## User Review & Critical Decisions
+### User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following decisions have been confirmed for the Vercel deployment:
-> - **Database Architecture**: Full support for **external PostgreSQL** (Supabase, Neon, Vercel Postgres) and **MySQL** (PlanetScale, Aiven, RDS), with an automated fallback to the in-memory laboratory store if credentials are missing or temporarily unreachable, preventing any serverless crashes.
-> - **Testing Scope**: A **full end-to-end test suite** validating the production Vite build, TypeScript type integrity, serverless route handlers, and ML prediction endpoints.
+> The following architectural and delivery decisions have been confirmed and will be incorporated into the implementation:
+
+- **Confirmed Decision (Delivery Strategy)**: Dual-layer delivery—real email dispatch to the user's actual email address, combined with an on-screen verification code backup with one-click auto-fill in the modal.
+- **Confirmed Decision (Provider Support)**: Support both **Resend API** (via HTTPS REST API) and **Standard SMTP** (Nodemailer with host, port, user, pass) configurable through environment variables (`RESEND_API_KEY`, `SMTP_HOST`, `SMTP_USER`, etc.).
+- **Zero-Failure Fallback**: If external mail credentials are not provided or if the remote email API is temporarily unreachable, registration never crashes or blocks—the code is safely delivered via the on-screen lab backup with clear user status indication.
 
 ---
 
-## 1. Overview & Core Concept
+### 1. Overview & Core Concept
 
-- **What It Does**: Hardens CalibTrack for seamless one-click Vercel deployment, allowing the application to operate as a high-performance static frontend powered by serverless backend endpoints with resilient database pooling.
-- **Target Persona**: Lab Administrators and Metrology Teams deploying CalibTrack into production environments.
-- **Key Value**:
-  - **Zero Serverless Failures**: Handles cold starts, connection pooling timeouts, and database disconnects gracefully.
-  - **Dual Database Flexibility**: Supports standard connection strings for both PostgreSQL (`postgres://` / `postgresql://`) and MySQL (`mysql://`).
-  - **Verified Production Bundle**: Ensures error-free static compilation and valid client routing.
+When lab managers or technicians register new staff accounts on CalibTrack, verification is required before access is granted. Currently, codes were generated in-memory and logged to the server console without transmitting across external mail protocols.
 
----
-
-## 2. User Experience & Visual Design
-
-- **Status & Health Monitoring**:
-  - The application dashboard and settings automatically report live database connection health (e.g. `PostgreSQL Pool Connected`, `MySQL Connected`, or `Resilient Lab Store Active`).
-- **Smooth SPA Routing on Vercel**:
-  - Clean client-side navigation between `/dashboard`, `/equipment`, `/calibration`, `/reports`, `/calendar`, and `/settings` without 404s on page refresh via `vercel.json` rewrite rules.
-- **Instant Response Times**:
-  - Serverless cold-start mitigation with cached database initialization promises and streamlined asset delivery.
+This upgrade establishes:
+1. **Real External Email Transmission**: Dispatches genuine HTML emails containing the 6-digit verification code directly to the registrant's inbox (e.g. Gmail, Outlook, lab domain) using either Resend or custom SMTP.
+2. **On-Screen Verification Backup Banner**: An interactive metrology lab inbox card inside the verification modal displaying the active 6-digit code with **"One-Click Auto-Fill"** and **"Copy Code"** actions.
+3. **Delivery Status Feedback**: Clear visual badges informing the user whether the email was dispatched to external mail servers or is running via sandbox mode.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+### 2. User Experience & Visual Design
 
-- **Decision 1: Universal PostgreSQL & MySQL Connection Driver**:
-  - *Chosen Approach*: Support both `pg` (PostgreSQL) and `mysql2` (MySQL) connection strings through a unified database client adapter in `server/database/config.ts`.
-  - *Why*: Gives users complete freedom to plug in any hosted database (Supabase, Neon, AWS RDS, PlanetScale) by just setting `DATABASE_URL` in Vercel environment variables.
-- **Decision 2: Serverless Connection Pooling Limits**:
-  - *Chosen Approach*: Enforce max connection pool size (`connectionLimit: 1` to `5`) suited for serverless microVM environments to prevent exhausting database connection pools under concurrent lambdas.
-- **Decision 3: Standalone Automated Test Runner**:
-  - *Chosen Approach*: Create `scripts/test-e2e.ts` that boots and tests all REST routes, ML prediction endpoints, and verify `npm run build` synchronously before deployment.
+#### Key User Flows
+1. **Staff Registration**:
+   - User inputs Name, Email, and Password on the registration screen and clicks "Register Staff Member".
+   - Backend creates the user entry, generates a cryptographically sound 6-digit OTP, and triggers `emailService.sendVerificationOtp()`.
+   - The user's external inbox receives an ISO 17025 styled email with the verification code.
+   - The UI immediately transitions into the 6-digit verification modal.
+2. **Verification & Auto-Fill**:
+   - The modal shows the recipient address, countdown timer (15 minutes), and an on-screen verification backup card.
+   - Users can either type the code received in their external email or click **"Auto-Fill Code"** directly on the on-screen card.
+   - Upon entering the 6th digit, the account is automatically activated, transitioning the user straight into the system.
+3. **Resend Code**:
+   - Clicking "Resend Code" enforces a 60-second cooldown, dispatches a fresh email, and refreshes the backup card.
+
+#### Visual Design Tokens & Component Styling
+- **Modal Header**: Rich deep laboratory blue gradient (`from-blue-600 to-indigo-700`) with clean typography and ISO status badge.
+- **On-Screen Backup Card**: Elegant amber/indigo card with border styling (`bg-slate-50 border-slate-200`), featuring a glowing 6-digit badge and quick auto-fill button.
+- **HTML Email Design**: Responsive laboratory-themed template with CalibTrack header, bold verification code display (`32px` monospace font), expiration alert, and clean security notice.
 
 ---
 
-## 4. Technical Architecture & Data Strategy
+### 3. Key Product Decisions & Trade-Offs
+
+- **Decision 1: Native REST Resend Client + SMTP Adapter**
+  - *Chosen Approach*: Implement a zero-dependency lightweight HTTPS client for Resend API alongside Nodemailer for SMTP.
+  - *Why*: Minimizes serverless bundle weight for Vercel, executes in under 200ms, and requires no heavy native C++ binaries.
+  - *Alternatives Considered*: Heavy monolithic SDKs that increase cold-start latency on Vercel.
+
+- **Decision 2: Non-Blocking Async Dispatch with Fail-Safe Fallback**
+  - *Chosen Approach*: Send email asynchronously and always provide the active verification code in the API response.
+  - *Why*: Prevents network timeouts from external mail servers from blocking user registration, ensuring users can always complete registration.
+
+---
+
+### 4. Technical Architecture & Data Strategy
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        Vercel Deployment Model                         │
-│                                                                        │
-│   ┌───────────────────────────┐    ┌────────────────────────────────┐  │
-│   │    Static Client SPA      │    │    Serverless API Function     │  │
-│   │  (Vite Build -> dist/)    │    │      (api/index.ts)            │  │
-│   │   - React 19 Frontend     │    │   - Express 4.x Sub-App        │  │
-│   │   - Tailwind CSS v4       │    │   - ML Recommendation Engine   │  │
-│   │   - Static Asset Cache    │    │   - Auth & Reminder Dispatch   │  │
-│   └─────────────┬─────────────┘    └───────────────┬────────────────┘  │
-│                 │                                  │                   │
-│                 ▼                                  ▼                   │
-│   ┌────────────────────────────────────────────────────────────────┐   │
-│   │               vercel.json Rewrites & Headers                   │   │
-│   │   /api/*  -> api/index.ts (Serverless Express Handler)         │   │
-│   │   /*      -> /index.html (Client Single Page App Router)       │   │
-│   └────────────────────────────────┬───────────────────────────────┘   │
-└────────────────────────────────────┼───────────────────────────────────┘
-                                     │
-                 ┌───────────────────┴───────────────────┐
-                 ▼                                       ▼
-    ┌───────────────────────────┐           ┌───────────────────────────┐
-    │    External Database      │           │    Resilient In-Memory    │
-    │  - PostgreSQL / Supabase  │   (or)    │    Laboratory Store       │
-    │  - MySQL / PlanetScale    │           │  - 15 Instruments         │
-    │  (via DATABASE_URL)       │           │  - Full Audit History     │
-    └───────────────────────────┘           └───────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│                   Frontend UI                          │
+│  - LoginPage.tsx (Registration & Login tabs)           │
+│  - OtpVerificationModal.tsx (Inputs + Backup Banner)   │
+│  - ForgotPasswordModal.tsx (Password reset codes)      │
+└──────────────────────────┬─────────────────────────────┘
+                           │ POST /api/auth/register
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│                   Express API                          │
+│  - server/routes/auth.routes.ts                        │
+│    ├── Generates 6-digit numeric OTP                   │
+│    ├── Stores in-memory/DB with 15-min TTL             │
+│    └── Invokes emailService.sendVerificationEmail()    │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+       ┌───────────────────┴───────────────────┐
+       ▼                                       ▼
+┌───────────────────────────────┐   ┌───────────────────────────────┐
+│     Resend API (HTTPS REST)   │   │     Nodemailer (SMTP)         │
+│  - RESEND_API_KEY             │   │  - SMTP_HOST, SMTP_PORT       │
+│  - High-deliverability inbox  │   │  - SMTP_USER, SMTP_PASS       │
+└───────────────────────────────┘   └───────────────────────────────┘
 ```
+
+#### Files to Create & Update
+1. **`server/services/email.service.ts`** *(New)*:
+   - Configures email delivery via Resend API and standard SMTP.
+   - Generates responsive ISO 17025 branded HTML templates for staff registration and password recovery.
+   - Provides safe fallback reporting when external mail services are not configured.
+2. **`server/routes/auth.routes.ts`**:
+   - Hooks `emailService` into `/register`, `/resend-code`, and `/forgot-password`.
+3. **`src/components/auth/OtpVerificationModal.tsx`**:
+   - Adds the on-screen verification backup card with one-click auto-fill, copy button, and delivery status badge.
+4. **`src/components/auth/ForgotPasswordModal.tsx`**:
+   - Adds matching on-screen backup card for password reset codes.
+5. **`.env.example`**:
+   - Documents `RESEND_API_KEY`, `RESEND_FROM`, and `SMTP_*` parameters.
 
 ---
 
-## 5. Implementation Roadmap
-
-1. **Universal Database Connectivity (`server/database/config.ts`)**:
-   - Add PostgreSQL support via `pg` connection pool alongside existing MySQL support.
-   - Detect protocol scheme (`postgres://`, `postgresql://`, `mysql://`) from `DATABASE_URL` or `POSTGRES_URL`.
-   - Maintain seamless in-memory fallback if credentials are absent or remote host is down.
-2. **Vercel Serverless Routing & Config (`vercel.json` & `api/index.ts`)**:
-   - Audit and refine `vercel.json` rewrites and cache control headers.
-   - Ensure `api/index.ts` safely resolves all routes with or without prefix stripping.
-3. **End-to-End Automated Test Suite (`scripts/test-e2e.ts`)**:
-   - Test `/api/dashboard/summary`
-   - Test `/api/equipment` (CRUD & filtering)
-   - Test `/api/equipment/:id/recommended-interval` (ML model)
-   - Test `/api/equipment/:id/apply-interval` (ML application)
-   - Test `/api/calibration-records`
-   - Test `/api/reminders/settings` & preview
-4. **Production Build & Type Check Verification**:
-   - Run `npm run build` to confirm client compilation.
-   - Run `npm run lint` (`tsc --noEmit`) to verify zero TypeScript errors.
-5. **Deployment Guide & Environment Sample (`.env.example` & `VERCEL_DEPLOYMENT.md`)**:
-   - Document step-by-step instructions for importing Git repo into Vercel and setting environment variables.
+### 5. Verification Plan
+- **Verification Tests**:
+  - Run registration endpoint and verify email delivery pipeline logic.
+  - Test OTP code input, auto-fill, and verification completion.
+  - Run full end-to-end test suite (`npm run test:e2e`).
+  - Run `lint_applet` and `compile_applet` to ensure zero compilation errors.

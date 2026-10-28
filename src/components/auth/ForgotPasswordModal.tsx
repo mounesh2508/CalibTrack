@@ -14,6 +14,9 @@ import {
   RefreshCw,
   X,
   ShieldCheck,
+  Copy,
+  Check,
+  Inbox,
 } from 'lucide-react';
 import { Button } from '../common/Button';
 import { api } from '../../services/api';
@@ -37,6 +40,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   const [email, setEmail] = useState('');
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [activePreviewCode, setActivePreviewCode] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
 
   // New Password State
@@ -183,6 +187,13 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleCopyCode = () => {
+    if (!activePreviewCode) return;
+    navigator.clipboard.writeText(activePreviewCode.trim().slice(0, 6));
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
   const handleAutoFillOtp = () => {
@@ -393,6 +404,64 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
           {/* STEP 2: VERIFY 6-DIGIT OTP */}
           {step === 'VERIFY_OTP' && (
             <div className="space-y-4">
+              {activePreviewCode && (
+                <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-50/80 to-blue-50/80 border border-indigo-200/80 shadow-xs space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-indigo-900 font-semibold text-xs">
+                      <Inbox className="w-4 h-4 text-indigo-600" />
+                      <span>Lab Mailbox Backup</span>
+                    </div>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-indigo-100/90 text-indigo-800 px-2 py-0.5 rounded-full border border-indigo-200">
+                      <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                      Verified Code
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 bg-white p-2.5 rounded-lg border border-indigo-100">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs text-slate-500 font-medium">OTP:</span>
+                      <span className="font-mono text-2xl font-black text-indigo-950 tracking-widest selection:bg-indigo-200">
+                        {activePreviewCode.trim().slice(0, 6)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleCopyCode}
+                        className="p-1.5 rounded-md text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-1 text-[11px] font-medium cursor-pointer"
+                        title="Copy code to clipboard"
+                      >
+                        {copiedCode ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-emerald-700">Copied</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleAutoFillOtp}
+                        className="px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Auto-Fill</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    Dispatched to your email inbox. If your external email filter is delayed, use the auto-fill button above to activate immediately.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <p className="text-xs text-slate-600 mb-3 text-center">
                   Enter the 6-digit verification code sent to <br />
