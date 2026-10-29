@@ -142,8 +142,12 @@ export default function App() {
         }
 
         if (notifsData && Array.isArray(notifsData.items)) {
+          const equipCodes = new Set(items.map((e) => (e.code || '').toUpperCase()));
           const validNotifs = notifsData.items.filter(
-            (n) => !n.equipmentId || equipIds.has(n.equipmentId)
+            (n) =>
+              !n.equipmentId ||
+              equipIds.has(n.equipmentId) ||
+              (n.equipmentCode && equipCodes.has(n.equipmentCode.toUpperCase()))
           );
           setNotifications(validNotifs);
         }

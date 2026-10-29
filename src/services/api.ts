@@ -966,9 +966,9 @@ export const api = {
           : n.type === 'CALIBRATION_COMPLETED'
           ? 'success'
           : 'system',
-      read: Boolean(n.is_read),
-      equipmentId: n.equipment_id || undefined,
-      equipmentCode: n.email_details?.equipment_code || undefined,
+      read: Boolean(n.is_read || n.read),
+      equipmentId: n.equipment_id || n.equipmentId || undefined,
+      equipmentCode: n.equipment_code || n.equipmentCode || n.email_details?.equipment_code || undefined,
       emailDetails: n.email_details ? {
         subject: n.email_details.subject,
         recipients: n.email_details.recipients || [],

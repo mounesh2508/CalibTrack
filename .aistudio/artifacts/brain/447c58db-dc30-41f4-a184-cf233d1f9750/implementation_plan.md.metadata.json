@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to audit, optimize, and fix Vercel deployment compatibility issues: replace fragile cors package with zero-dependency header injection to eliminate 'Cannot read properties of undefined (reading vary)' crashes, harden serverless routing, and verify all 12 API endpoints.",
-  "updatedAt":  "2026-10-29T05:48:56.921096269Z",
+  "summary":  "Implementation plan to ensure Due Soon and Overdue calibration alerts are automatically evaluated and displayed in the in-app notification feed in real time on Vercel deployments.",
+  "updatedAt":  "2026-10-29T05:59:17.208275715Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
