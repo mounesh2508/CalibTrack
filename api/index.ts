@@ -91,6 +91,13 @@ app.use((req: any, res: any, next: any) => {
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
 
+// Graceful 404 handler for unmatched routes to prevent serverless execution hangs
+app.use((req: any, res: any) => {
+  if (!res.headersSent) {
+    res.status(404).json({ success: false, detail: `Route ${req.method} ${req.url} not found.` });
+  }
+});
+
 // 3. Error Handling Middleware
 app.use(errorHandler);
 
@@ -115,12 +122,25 @@ export default async function handler(req: any, res: any) {
       return;
     }
 
-    // Await Express middleware pipeline and response completion
-    return new Promise<void>((resolve, reject) => {
+    // Await Express middleware pipeline and response completion with timeout safety
+    return new Promise<void>((resolve) => {
       let resolved = false;
+
+      // 9-second serverless safety timeout to prevent Vercel 10s FUNCTION_INVOCATION_FAILED
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          if (!res.headersSent) {
+            res.status(504).json({ detail: 'Serverless invocation timeout.' });
+          }
+          resolve();
+        }
+      }, 9000);
+
       const done = () => {
         if (!resolved) {
           resolved = true;
+          clearTimeout(timeout);
           resolve();
         }
       };

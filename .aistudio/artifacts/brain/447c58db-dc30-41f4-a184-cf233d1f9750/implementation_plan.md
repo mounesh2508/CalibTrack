@@ -1,70 +1,79 @@
-# Vercel Deployment Synchronization & Email Delivery Confirmation
+# Comprehensive Vercel Deployment Audit, Bug Fix & Optimization Plan
 
-Confirm Gmail SMTP real email delivery to `summa.00.mail@gmail.com`, align deployment steps for Vercel, and ensure registration and resend flows are hardened for live production.
-
----
-
-### User Review & Confirmation Analysis
-
-> [!NOTE]
-> The user confirmed the following critical findings:
-
-1. **Email Delivery Confirmed**:
-   - The test verification email dispatched via our updated Gmail SMTP transporter was successfully received in `summa.00.mail@gmail.com`'s inbox (*"i only received it now"*).
-   - This proves that **Gmail SMTP (`smtp.gmail.com:465`) with user `asokanmounesh@gmail.com` and App Password `akrgdspktzjezxwl` is 100% operational and delivering real emails to external Gmail addresses**.
-2. **Root Cause of Prior Failure on Vercel**:
-   - The user confirmed: *"Vercel was not redeployed after previous code updates"*.
-   - When registering on the Vercel URL earlier, Vercel was still executing the previous build which lacked the embedded Gmail SMTP configuration and lacked the `/api/auth/resend-verification` route.
-   - Once Vercel is redeployed with the current codebase, registrations on the Vercel link will execute the new Gmail SMTP pipeline and deliver emails immediately.
+Audit the CalibTrack application for full production compatibility with Vercel Serverless Functions (`@vercel/node`), fix runtime bugs (including CORS `vary` header crashes in serverless containers), and verify all endpoints and email dispatch pathways without `.env` dependency.
 
 ---
 
-### 1. Proposed Hardening & Deployment Steps
+### User Review & Critical Decisions
 
-To ensure that the upcoming Vercel redeployment runs flawlessly:
+> [!IMPORTANT]
+> The following issues were diagnosed during the Vercel serverless runtime simulation and will be resolved:
 
-1. **Explicit Delivery Status in Registration UI**:
-   - Ensure the modal and toast notices clearly indicate when an email was dispatched via Gmail SMTP.
-   - If any temporary cloud network glitch occurs, the response will clearly state the status rather than hanging.
-2. **Vercel Serverless Function Optimization**:
-   - Ensure `api/index.ts` has connection timeout guards (8s) so Vercel serverless microVMs never exceed execution limits.
-   - Verify `/api/auth/register`, `/api/auth/resend-code`, and `/api/auth/resend-verification` are all synchronously awaited before the serverless function terminates.
-3. **Deployment Guidance**:
-   - Provide clear, simple instructions for redeploying the latest codebase to Vercel (via Git push or Vercel dashboard redeploy).
+- **Identified Bug 1 (CORS `vary` Header Crash in Serverless Environments)**:
+  - During serverless execution simulation of `api/index.ts`, requests crashed with `TypeError: Cannot read properties of undefined (reading 'vary')` originating from the third-party `cors` package attempting to inspect response headers on Vercel's response wrapper.
+  - **Fix**: Replace the third-party `cors` package with a lightweight, robust custom middleware that directly injects standard CORS headers (`Access-Control-Allow-Origin`, `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers`) and instantly resolves `OPTIONS` preflight requests with `204 No Content`.
+- **Identified Bug 2 (Zero `.env` Dependency Verification)**:
+  - The user deleted `/.env`. On Vercel, `.env` is never deployed (ignored by `.gitignore`).
+  - **Fix**: Verify that all core services—especially Gmail SMTP (`asokanmounesh@gmail.com` with App Password `akrgdspktzjezxwl`), database memory fallback, and ISO 17025 interval calculations—operate seamlessly with zero reliance on local `.env` files.
+- **Identified Bug 3 (Vercel Route Rewrite Normalization in `api/index.ts`)**:
+  - Ensure URL query paths (`?path=...`) from `vercel.json` rewrites and direct `/api/...` paths are seamlessly resolved without query parameter pollution.
 
 ---
 
-### 2. Technical Architecture Verification
+### 1. Proposed Modifications
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                   Vercel Frontend                      │
-│  - User registers: summa.00.mail@gmail.com             │
+│                   Vercel Client                        │
+│  - Static assets served via Vite build (/dist)         │
 └──────────────────────────┬─────────────────────────────┘
-                           │ POST /api/auth/register
+                           │ All /api/* calls
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │             Vercel Serverless (api/index.ts)           │
-│  - Executes updated emailService.ts                    │
-└──────────────────────────┬─────────────────────────────┘
-                           │ Direct SSL Port 465 / 587
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│                   Google Gmail SMTP                    │
-│  - asokanmounesh@gmail.com / akrgdspktzjezxwl          │
-│  - STATUS: Confirmed working                           │
+│  - Custom Zero-Dependency CORS Header Injector         │
+│    └── Replaces fragile `cors` package (No vary error) │
+│  - Query/Path Normalizer for Vercel Rewrites           │
+│  - Try/Catch Error Boundaries around All Routes        │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│               summa.00.mail@gmail.com                  │
-│  - Receives: 6-digit verification code email           │
+│                   Express Routes                       │
+│  - /auth/register, /auth/login, /auth/verify-code      │
+│  - /auth/resend-code, /auth/resend-verification        │
+│  - /equipment, /calibrations, /notifications           │
+│  - /dashboard/summary, /reminders/trigger              │
 └────────────────────────────────────────────────────────┘
 ```
 
+#### Detailed Changes
+1. **`server/middleware/cors.ts`**:
+   - Refactor from external `cors` package to a native, zero-dependency middleware that writes CORS headers directly to `res.setHeader`.
+   - Properly handles `OPTIONS` preflight requests with immediate `204` status.
+2. **`api/index.ts`**:
+   - Harden `handler(req, res)` with enhanced response completion listeners (`finish`, `close`).
+   - Add graceful 404 handler for unmatched routes returning clean JSON instead of crashing the serverless microVM.
+3. **`server/services/email.service.ts`**:
+   - Double-check default fallback values for Gmail SMTP so it operates cleanly in environments without `.env`.
+
 ---
 
-### 3. Verification Plan
-- Confirm `compile_applet` and `lint_applet` pass with 0 errors.
-- Confirm all 11/11 tests pass in `npm run test:e2e`.
-- Provide the step-by-step procedure to trigger redeployment on Vercel.
+### 2. Verification Plan
+
+- **Automated Vercel Serverless Simulation**:
+  - Run the multi-endpoint simulator against `api/index.ts` covering:
+    - `GET /api/dashboard/summary`
+    - `GET /api/equipment`
+    - `GET /api/calibrations`
+    - `GET /api/notifications`
+    - `POST /api/reminders/trigger`
+    - `POST /api/auth/register`
+    - `POST /api/auth/resend-verification`
+    - `POST /api/auth/resend-code`
+  - Verify every endpoint returns status `200` or `201` without `vary` errors.
+- **End-to-End Test Suite**:
+  - Execute `npm run test:e2e` to verify full system health.
+- **Build Verification**:
+  - Run `npm run build` (`vite build`) to confirm static asset compilation.
+  - Run `lint_applet` and `compile_applet`.

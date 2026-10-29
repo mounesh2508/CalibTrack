@@ -15,6 +15,7 @@ apiRouter.use('/users', usersRoutes);
 apiRouter.use('/health', healthRoutes);
 apiRouter.use('/equipment', equipmentRoutes);
 apiRouter.use('/calibration-records', calibrationRoutes);
+apiRouter.use('/calibrations', calibrationRoutes);
 apiRouter.use('/notifications', notificationRoutes);
 apiRouter.use('/dashboard', dashboardRoutes);
 apiRouter.use('/reminders', reminderRoutes);
