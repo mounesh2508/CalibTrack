@@ -1,6 +1,6 @@
 {
-  "summary":  "Detailed root cause explanation of why emails were not being received on Vercel deployments, along with an implementation plan to fix serverless unawaited promises, dispatch real emails on alert detection, and add a live SMTP test dispatch button in Settings.",
-  "updatedAt":  "2026-10-29T09:06:35.763955622Z",
+  "summary":  "Implementation plan to resolve Vercel serverless FUNCTION_INVOCATION_FAILED via HTTPS Port 443 email delivery engine, and restrict calibration alerts exclusively to the technician assigned by the administrator.",
+  "updatedAt":  "2026-10-29T09:32:17.540325319Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

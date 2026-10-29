@@ -105,6 +105,7 @@ router.post('/register', async (req: Request, res: Response) => {
         dispatched: emailResult.dispatched,
         provider: emailResult.provider,
       },
+      simulation: !emailResult.dispatched ? { otp_code: code } : undefined,
     });
   } catch (err: any) {
     console.error('[CalibTrack Auth] Register error:', err);

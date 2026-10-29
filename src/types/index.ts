@@ -39,6 +39,7 @@ export interface Equipment {
   daysRemaining: number;
   status: EquipmentStatus;
   assignedTechnician: string;
+  assignedTechnicianEmail?: string;
   description?: string;
   tolerance?: string;
   calibrationStandard?: string;

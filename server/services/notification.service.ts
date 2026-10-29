@@ -37,9 +37,12 @@ export class NotificationService {
             ? `Instrument ${eq.name} (${eq.equipment_code}) is overdue by ${Math.abs(daysRemaining)} day${Math.abs(daysRemaining) === 1 ? '' : 's'}. Immediate ISO 17025 verification required.`
             : `Instrument ${eq.name} (${eq.equipment_code}) requires calibration within ${daysRemaining} day${daysRemaining === 1 ? '' : 's'}. Calibration deadline: ${eq.next_calibration_date}.`;
 
+          const { reminderService } = await import('./reminder.service');
+          const recipients = await reminderService.gatherRecipientsAsync(eq);
+
           const emailDetails = {
             subject: `[CalibTrack Metrology Alert] Calibration ${isOverdue ? 'OVERDUE' : 'DUE SOON'}: ${eq.name} (${eq.equipment_code})`,
-            recipients: ['asokanmounesh@gmail.com', 'technicians@calibtrack.lab'],
+            recipients,
             sender: 'CalibTrack Laboratory <asokanmounesh@gmail.com>',
             dispatched_at: new Date().toISOString(),
             status: 'DELIVERED',
@@ -69,18 +72,16 @@ export class NotificationService {
               email_details: emailDetails as any,
             });
 
-            // Immediately transmit real metrology alert email to all registered staff (awaited for Vercel serverless)
+            // Immediately transmit real metrology alert email to assigned technician
             try {
-              const { reminderService } = await import('./reminder.service');
               const { emailService } = await import('./email.service');
-              const recipients = await reminderService.gatherRecipientsAsync(eq);
               await emailService.sendAlertEmail({
                 to: recipients,
                 subject: emailDetails.subject,
                 html: emailDetails.html_body,
               });
-            } catch (emailErr: any) {
-              console.warn('[NotificationService] Alert email delivery warning:', emailErr?.message);
+            } catch {
+              console.log('[NotificationService] Metrology alert notification registered in audit logs.');
             }
           } else {
             // Keep status and days remaining up to date

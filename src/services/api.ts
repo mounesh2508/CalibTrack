@@ -95,6 +95,8 @@ export interface EquipmentApiPayload {
   next_calibration_date?: string;
   description?: string;
   status?: string;
+  assigned_technician?: string;
+  assigned_technician_email?: string;
 }
 
 export interface CalibrationApiPayload {
@@ -161,6 +163,7 @@ export function mapBackendEquipmentToFrontend(item: any): Equipment {
     daysRemaining: metrics.daysRemaining,
     status,
     assignedTechnician: item.assigned_technician || item.assignedTechnician || 'Dr. Sarah Lin',
+    assignedTechnicianEmail: item.assigned_technician_email || item.assignedTechnicianEmail || undefined,
     description: item.description || undefined,
   };
 }

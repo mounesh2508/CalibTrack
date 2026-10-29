@@ -183,60 +183,51 @@ export class ReminderService {
 
   /**
    * Gathers recipient list for calibration notifications:
-   * Gathers all registered laboratory staff emails (administrators and technicians).
+   * STRICTLY returns ONLY the technician email assigned to the equipment by the administrator.
+   * If no specific technician email is assigned, attempts to resolve by technician name from staff registry.
+   * If still unassigned, falls back solely to the lab administrator.
+   * NEVER broadcasts to unassigned users or other staff members.
    */
-  async gatherRecipientsAsync(eq?: EquipmentEntity): Promise<string[]> {
-    const recipients = new Set<string>();
-
-    // 1. Memory store users
-    memoryStore.users.forEach((u) => {
-      if (u.email && u.email.includes('@')) {
-        recipients.add(u.email.toLowerCase().trim());
-      }
-    });
-
-    // 2. PostgreSQL users if active
-    if (!isFallback() && getPool()) {
-      try {
-        const pool = getPool()!;
-        const [rows]: any = await pool.query('SELECT email FROM users WHERE email IS NOT NULL');
-        if (rows && Array.isArray(rows)) {
-          rows.forEach((r: any) => {
-            if (r.email && r.email.includes('@')) {
-              recipients.add(r.email.toLowerCase().trim());
-            }
-          });
-        }
-      } catch (err) {
-        console.warn('[ReminderService] DB users query failed:', err);
-      }
-    }
-
-    // Separate real external emails from mock calibtrack.lab emails
-    const realEmails = Array.from(recipients).filter((e) => !e.endsWith('@calibtrack.lab'));
-
-    // Always ensure the lab owner / administrator receives alerts
-    if (!realEmails.includes('asokanmounesh@gmail.com')) {
-      realEmails.unshift('asokanmounesh@gmail.com');
-    }
-
-    return realEmails.length > 0 ? realEmails : Array.from(recipients);
-  }
-
   gatherRecipients(eq?: EquipmentEntity): string[] {
     const recipients = new Set<string>();
-    memoryStore.users.forEach((u) => {
-      if (u.email && u.email.includes('@')) {
-        recipients.add(u.email.toLowerCase().trim());
-      }
-    });
 
-    const realEmails = Array.from(recipients).filter((e) => !e.endsWith('@calibtrack.lab'));
-    if (!realEmails.includes('asokanmounesh@gmail.com')) {
-      realEmails.unshift('asokanmounesh@gmail.com');
+    if (eq) {
+      // 1. Direct assigned technician email on equipment
+      if (eq.assigned_technician_email && eq.assigned_technician_email.includes('@')) {
+        recipients.add(eq.assigned_technician_email.toLowerCase().trim());
+      }
+
+      // 2. Resolve assigned technician by name from registered staff
+      if (recipients.size === 0 && eq.assigned_technician) {
+        const assignedName = eq.assigned_technician.toLowerCase().trim();
+        // Check if assignedTechnician is itself an email
+        if (assignedName.includes('@')) {
+          recipients.add(assignedName);
+        } else {
+          // Look up in registered staff
+          const matchedUser = memoryStore.users.find(
+            (u) =>
+              u.name.toLowerCase().trim() === assignedName ||
+              u.name.toLowerCase().includes(assignedName) ||
+              assignedName.includes(u.name.toLowerCase().trim())
+          );
+          if (matchedUser && matchedUser.email && matchedUser.email.includes('@')) {
+            recipients.add(matchedUser.email.toLowerCase().trim());
+          }
+        }
+      }
     }
 
-    return realEmails.length > 0 ? realEmails : Array.from(recipients);
+    // 3. Fallback solely to lab administrator if completely unassigned
+    if (recipients.size === 0) {
+      recipients.add('asokanmounesh@gmail.com');
+    }
+
+    return Array.from(recipients);
+  }
+
+  async gatherRecipientsAsync(eq?: EquipmentEntity): Promise<string[]> {
+    return this.gatherRecipients(eq);
   }
 
   /**

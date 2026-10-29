@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft, Save, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Sparkles, TrendingUp, TrendingDown, Check } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { FormField, Input, Select, Textarea } from '../components/common/FormField';
@@ -34,8 +34,30 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
     lastCalibrationDate: todayStr,
     description: '',
     tolerance: '±0.01 %',
-    assignedTechnician: 'Dr. Sarah Lin',
+    assignedTechnician: 'Mohanraja Technician',
+    assignedTechnicianEmail: 'mohanraja.ad24@bitsathy.ac.in',
   });
+
+  const [technicians, setTechnicians] = useState<Array<{ name: string; email: string }>>([
+    { name: 'Mohanraja Technician', email: 'mohanraja.ad24@bitsathy.ac.in' },
+    { name: 'Asokan Mounesh (Administrator)', email: 'asokanmounesh@gmail.com' },
+  ]);
+
+  useEffect(() => {
+    api.listUsers().then((users) => {
+      if (users && users.length > 0) {
+        const mapped = users.map((u) => ({ name: u.name, email: u.email }));
+        setTechnicians(mapped);
+        if (mapped.length > 0) {
+          setFormData((prev) => ({
+            ...prev,
+            assignedTechnician: prev.assignedTechnician || mapped[0].name,
+            assignedTechnicianEmail: prev.assignedTechnicianEmail || mapped[0].email,
+          }));
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   const mlRecommendation = useMemo(() => {
     return predictCalibrationInterval({
@@ -93,6 +115,8 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
         next_calibration_date: metrics.nextCalibrationDate,
         status: metrics.status.toUpperCase(),
         description: formData.description.trim() || undefined,
+        assigned_technician: formData.assignedTechnician,
+        assigned_technician_email: formData.assignedTechnicianEmail || undefined,
       });
 
       // 2. Notify parent state
@@ -390,11 +414,28 @@ export const AddEquipmentPage: React.FC<AddEquipmentPageProps> = ({
               />
             </FormField>
 
-            <FormField label="Lead Metrologist / Assignee">
-              <Input
-                value={formData.assignedTechnician}
-                onChange={(e) => setFormData({ ...formData, assignedTechnician: e.target.value })}
-              />
+            <FormField
+              label="Assigned Technician (Sole Alert Recipient)"
+              helperText="ISO 17025 alerts for this instrument will ONLY be sent to this assigned technician"
+            >
+              <Select
+                value={formData.assignedTechnicianEmail || formData.assignedTechnician}
+                onChange={(e) => {
+                  const selectedEmail = e.target.value;
+                  const found = technicians.find((t) => t.email === selectedEmail);
+                  setFormData({
+                    ...formData,
+                    assignedTechnician: found ? found.name : selectedEmail,
+                    assignedTechnicianEmail: selectedEmail,
+                  });
+                }}
+              >
+                {technicians.map((t, idx) => (
+                  <option key={t.email || idx} value={t.email}>
+                    {t.name} ({t.email})
+                  </option>
+                ))}
+              </Select>
             </FormField>
           </div>
 

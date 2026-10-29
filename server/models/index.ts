@@ -43,6 +43,8 @@ export interface EquipmentEntity {
   next_calibration_date: string | null;
   status: DbEquipmentStatus;
   description: string | null;
+  assigned_technician?: string | null;
+  assigned_technician_email?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;

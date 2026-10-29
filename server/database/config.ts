@@ -69,6 +69,15 @@ class MemoryStore {
         created_at: '2026-01-05T09:00:00Z',
         updated_at: '2026-01-05T09:00:00Z',
       },
+      {
+        id: 'usr-tech-03',
+        name: 'Mohanraja Technician',
+        email: 'mohanraja.ad24@bitsathy.ac.in',
+        password_hash: 'LabPassword123!',
+        role: 'TECHNICIAN',
+        created_at: '2026-01-05T09:00:00Z',
+        updated_at: '2026-01-05T09:00:00Z',
+      },
     ];
 
     // Dynamic relative date helpers so equipment never expires into all-overdue on Vercel deployments
@@ -114,6 +123,8 @@ class MemoryStore {
         next_calibration_date: daysFromNow(15),
         status: 'DUE_SOON',
         description: 'Double-beam spectrophotometer with Czerny-Turner monochromator for optical experiments.',
+        assigned_technician: 'Mohanraja Technician',
+        assigned_technician_email: 'mohanraja.ad24@bitsathy.ac.in',
         created_by: 'usr-admin-01',
         created_at: '2024-01-10T10:00:00Z',
         updated_at: '2025-09-15T11:00:00Z',
@@ -908,6 +919,12 @@ export async function initDatabase(): Promise<DbStatus> {
         message: 'Successfully connected to PostgreSQL database pool',
         databaseName: pgConfig.type === 'params' ? pgConfig.database : 'calibtrack',
       };
+
+      try {
+        await pgPool.query('ALTER TABLE equipment ADD COLUMN IF NOT EXISTS assigned_technician VARCHAR(100)');
+        await pgPool.query('ALTER TABLE equipment ADD COLUMN IF NOT EXISTS assigned_technician_email VARCHAR(150)');
+      } catch {}
+
       console.log(`[Database] Connected to live PostgreSQL database (${dbStatus.databaseName})`);
       return dbStatus;
     } catch (pgError: any) {

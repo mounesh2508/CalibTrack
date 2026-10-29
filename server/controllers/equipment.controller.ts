@@ -62,6 +62,8 @@ export class EquipmentController {
         calibration_interval_days,
         last_calibration_date,
         description,
+        assigned_technician,
+        assigned_technician_email,
       } = req.body;
 
       if (!equipment_code || !name || !category || calibration_interval_days === undefined) {
@@ -85,6 +87,8 @@ export class EquipmentController {
         calibration_interval_days: Number(calibration_interval_days),
         last_calibration_date,
         description,
+        assigned_technician,
+        assigned_technician_email,
       });
 
       res.status(201).json({

@@ -174,6 +174,8 @@ export class EquipmentService {
     calibration_interval_days: number;
     last_calibration_date?: string;
     description?: string;
+    assigned_technician?: string;
+    assigned_technician_email?: string;
     created_by?: string;
   }): Promise<EquipmentEntity> {
     // Validate required fields
@@ -237,6 +239,8 @@ export class EquipmentService {
       next_calibration_date: nextDate,
       status,
       description: data.description || null,
+      assigned_technician: data.assigned_technician || null,
+      assigned_technician_email: data.assigned_technician_email || null,
       created_by: data.created_by || null,
       created_at: nowIso,
       updated_at: nowIso,
@@ -345,31 +349,70 @@ export class EquipmentService {
     }
 
     const pool = getPool()!;
-    await pool.query(
-      `UPDATE equipment SET
-        equipment_code = ?, name = ?, category = ?, manufacturer = ?,
-        model_number = ?, serial_number = ?, location = ?, department = ?,
-        purchase_date = ?, calibration_interval_days = ?, last_calibration_date = ?,
-        next_calibration_date = ?, status = ?, description = ?, updated_at = NOW()
-       WHERE id = ?`,
-      [
-        updated.equipment_code,
-        updated.name,
-        updated.category,
-        updated.manufacturer,
-        updated.model_number,
-        updated.serial_number,
-        updated.location,
-        updated.department,
-        updated.purchase_date,
-        updated.calibration_interval_days,
-        updated.last_calibration_date,
-        updated.next_calibration_date,
-        updated.status,
-        updated.description,
-        current.id,
-      ]
-    );
+    try {
+      await pool.query(
+        `UPDATE equipment SET
+          equipment_code = ?, name = ?, category = ?, manufacturer = ?,
+          model_number = ?, serial_number = ?, location = ?, department = ?,
+          purchase_date = ?, calibration_interval_days = ?, last_calibration_date = ?,
+          next_calibration_date = ?, status = ?, description = ?,
+          assigned_technician = ?, assigned_technician_email = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [
+          updated.equipment_code,
+          updated.name,
+          updated.category,
+          updated.manufacturer,
+          updated.model_number,
+          updated.serial_number,
+          updated.location,
+          updated.department,
+          updated.purchase_date,
+          updated.calibration_interval_days,
+          updated.last_calibration_date,
+          updated.next_calibration_date,
+          updated.status,
+          updated.description,
+          updated.assigned_technician || null,
+          updated.assigned_technician_email || null,
+          current.id,
+        ]
+      );
+    } catch {
+      await pool.query(
+        `UPDATE equipment SET
+          equipment_code = ?, name = ?, category = ?, manufacturer = ?,
+          model_number = ?, serial_number = ?, location = ?, department = ?,
+          purchase_date = ?, calibration_interval_days = ?, last_calibration_date = ?,
+          next_calibration_date = ?, status = ?, description = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [
+          updated.equipment_code,
+          updated.name,
+          updated.category,
+          updated.manufacturer,
+          updated.model_number,
+          updated.serial_number,
+          updated.location,
+          updated.department,
+          updated.purchase_date,
+          updated.calibration_interval_days,
+          updated.last_calibration_date,
+          updated.next_calibration_date,
+          updated.status,
+          updated.description,
+          current.id,
+        ]
+      );
+    }
+
+    // Always keep memoryStore in sync
+    const memIdx = memoryStore.equipment.findIndex((e) => e.id === current.id || e.equipment_code === current.equipment_code);
+    if (memIdx !== -1) {
+      memoryStore.equipment[memIdx] = updated;
+    } else {
+      memoryStore.equipment.unshift(updated);
+    }
 
     if (updated.status === 'OVERDUE' || updated.status === 'DUE_SOON') {
       import('./notification.service').then(({ notificationService }) => {

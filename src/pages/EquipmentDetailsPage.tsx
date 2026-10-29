@@ -284,8 +284,11 @@ export const EquipmentDetailsPage: React.FC<EquipmentDetailsPageProps> = ({
                   <span className="text-slate-900 font-semibold text-sm mt-0.5 block">{equipment.purchaseDate}</span>
                 </div>
                 <div className="p-3 bg-slate-50/70 rounded-lg">
-                  <span className="text-slate-400 block text-[11px] font-medium">Lead Metrologist</span>
+                  <span className="text-slate-400 block text-[11px] font-medium">Assigned Technician</span>
                   <span className="text-slate-900 font-semibold text-sm mt-0.5 block">{equipment.assignedTechnician}</span>
+                  {equipment.assignedTechnicianEmail && (
+                    <span className="text-blue-600 font-mono text-[11px] block mt-0.5 truncate">{equipment.assignedTechnicianEmail}</span>
+                  )}
                 </div>
               </div>
 
