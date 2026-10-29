@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to ensure Due Soon and Overdue calibration alerts are automatically evaluated and displayed in the in-app notification feed in real time on Vercel deployments.",
-  "updatedAt":  "2026-10-29T05:59:17.208275715Z",
+  "summary":  "Implementation plan to ensure immediate in-app notification alerts are generated, dispatched, and displayed whenever an instrument with Due Soon or Overdue status is registered or updated.",
+  "updatedAt":  "2026-10-29T06:23:27.481082027Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

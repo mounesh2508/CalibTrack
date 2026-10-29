@@ -235,7 +235,7 @@ export default function App() {
     };
     setRecentActivities((prev) => [activity, ...prev]);
 
-    // Add notification
+    // Add system notification
     const notif: NotificationItem = {
       id: `NOTIF-${Date.now()}`,
       title: 'New Equipment Registered',
@@ -244,8 +244,47 @@ export default function App() {
       category: 'system',
       read: false,
       equipmentId: newEquip.id,
+      equipmentCode: newEquip.code,
     };
-    setNotifications((prev) => [notif, ...prev]);
+
+    // Check if new equipment is Due Soon or Overdue
+    const statusVal = String(newEquip.status).toLowerCase();
+    const isOverdue = statusVal === 'overdue' || (newEquip.daysRemaining !== undefined && newEquip.daysRemaining < 0);
+    const isDueSoon = statusVal === 'due_soon' || statusVal === 'due soon' || (newEquip.daysRemaining !== undefined && newEquip.daysRemaining <= 30 && newEquip.daysRemaining >= 0);
+
+    if (isOverdue || isDueSoon) {
+      const days = newEquip.daysRemaining ?? (isOverdue ? -1 : 15);
+      const alertNotif: NotificationItem = {
+        id: `alert-${newEquip.id || newEquip.code}`,
+        title: isOverdue
+          ? `Calibration Overdue: ${newEquip.name}`
+          : `Calibration Due Soon: ${newEquip.name}`,
+        description: isOverdue
+          ? `Instrument ${newEquip.name} (${newEquip.code}) is overdue by ${Math.abs(days)} day(s). Immediate ISO 17025 verification required.`
+          : `Instrument ${newEquip.name} (${newEquip.code}) requires calibration within ${days} day(s). Calibration deadline: ${newEquip.nextCalibrationDate}.`,
+        timestamp: 'Just now',
+        category: isOverdue ? 'alert' : 'reminder',
+        read: false,
+        equipmentId: newEquip.id,
+        equipmentCode: newEquip.code,
+        emailDetails: {
+          subject: `[CalibTrack Metrology Alert] Calibration ${isOverdue ? 'OVERDUE' : 'DUE SOON'}: ${newEquip.name} (${newEquip.code})`,
+          recipients: ['asokanmounesh@gmail.com', 'technicians@calibtrack.lab'],
+          sender: 'CalibTrack Laboratory <asokanmounesh@gmail.com>',
+          dispatchedAt: new Date().toISOString(),
+          status: 'DELIVERED',
+          equipmentCode: newEquip.code,
+          equipmentName: newEquip.name,
+          urgency: isOverdue ? 'OVERDUE' : 'DUE_SOON',
+          daysRemaining: days,
+          dueDate: newEquip.nextCalibrationDate,
+          htmlBody: `<p><strong>${isOverdue ? 'Calibration Overdue' : 'Calibration Due Soon'}</strong></p>`,
+        },
+      };
+      setNotifications((prev) => [alertNotif, notif, ...prev]);
+    } else {
+      setNotifications((prev) => [notif, ...prev]);
+    }
 
     // Refresh from database
     await loadBackendData();

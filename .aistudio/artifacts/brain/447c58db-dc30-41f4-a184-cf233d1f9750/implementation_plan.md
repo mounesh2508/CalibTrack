@@ -1,23 +1,23 @@
-# Real-Time In-App Calibration Alerts for Due Soon and Overdue Equipment
+# Instant In-App Notification Alerts When Adding Due Soon or Overdue Equipment
 
-Ensure calibration alerts for **Due Soon** and **Overdue** instruments are automatically evaluated, populated, and displayed in the in-app notification feed in real time on Vercel deployments without requiring manual reminder triggers.
+Ensure that registering or updating an instrument whose calibration deadline is **Due Soon** ($\le 30$ days) or **Overdue** immediately triggers and displays an in-app calibration alert in the notification center and bell dropdown.
 
 ---
 
 ### User Review & Root Cause Analysis
 
 > [!IMPORTANT]
-> The exact root causes preventing in-app notifications on Vercel deployments have been diagnosed:
+> The exact root causes preventing alerts when adding Due Soon or Overdue instruments have been diagnosed:
 
-- **Root Cause 1 (Notification Generation Was Passive / Manual Only)**:
-  - Previously, `evaluateAndDispatch()` in `reminder.service.ts` was only called when someone manually submitted a `POST /api/reminders/trigger` request.
-  - When the app loaded on Vercel, `GET /api/notifications` simply queried whatever static notifications were in storage, rather than evaluating the current date against each instrument's `next_calibration_date`.
-  - **Fix**: Update `notificationService.list()` (and `GET /api/notifications`) to automatically evaluate all registered equipment in real-time. Any instrument whose calibration is overdue (past due date) or due soon ($\le 30$ days) will have an active, unread in-app alert automatically generated and synchronized in storage.
-- **Root Cause 2 (ID Mismatch Filtering in Frontend)**:
-  - In `src/App.tsx`, incoming notifications were filtered with `equipIds.has(n.equipmentId)`. On Vercel, when PostgreSQL or dynamic models generate UUIDs (or when seed notifications had string IDs like `eq-001`), notifications without an exact ID match were dropped.
-  - **Fix**: Update `App.tsx` and `api.ts` to match notifications against registered equipment by **both Equipment ID AND Equipment Code** (`EQ-2024-XXX`).
-- **Root Cause 3 (Database Persistence for Dynamic Notifications)**:
-  - If a PostgreSQL pool is active on Vercel, ensure generated notifications are upserted into the `notifications` table so mark-as-read and persistence work seamlessly across serverless invocations.
+- **Root Cause 1 (`handleAddEquipment` in `src/App.tsx`)**:
+  - When a user submitted the form in `AddEquipmentPage.tsx`, `handleAddEquipment` only added a generic `system` notification: *"New Equipment Registered: placed on schedule"*.
+  - It did not evaluate `newEquip.status`. If the instrument was registered with past calibration dates making it **Overdue** or **Due Soon**, no urgent alert was created in the frontend notification state.
+  - **Fix**: In `src/App.tsx`, evaluate `newEquip.status`. If `newEquip.status === 'Overdue'` or `newEquip.status === 'Due Soon'`, immediately generate the corresponding high-priority alert (`category: 'alert'` / `'reminder'`) with ISO 17025 metrology email details.
+- **Root Cause 2 (`server/services/equipment.service.ts`)**:
+  - In `equipmentService.create()` and `equipmentService.update()`, the backend computed `status = 'OVERDUE'` or `'DUE_SOON'`, but never triggered `notificationService.syncLiveCalibrationAlerts()`.
+  - **Fix**: Automatically invoke `notificationService.syncLiveCalibrationAlerts()` inside `equipmentService.create()` and `equipmentService.update()` whenever a created or modified instrument is overdue or due soon.
+- **Root Cause 3 (Notification Feed Synchronization in `AddEquipmentPage.tsx`)**:
+  - Ensure that after equipment registration, `loadBackendData()` re-fetches notifications from `/api/notifications`, guaranteeing the bell icon badge and notification feed immediately reflect the new alert.
 
 ---
 
@@ -25,51 +25,45 @@ Ensure calibration alerts for **Due Soon** and **Overdue** instruments are autom
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│              User opens CalibTrack on Vercel           │
-│  - App.tsx calls api.fetchNotifications()              │
+│             User Registers Instrument                  │
+│  - Selects past last calibration date                  │
+│  - Computed status: OVERDUE or DUE_SOON                │
 └──────────────────────────┬─────────────────────────────┘
-                           │ GET /api/notifications
+                           │ POST /api/equipment
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│           Vercel Serverless / Express API              │
-│  - notificationController.getAll()                     │
-│    └── notificationService.list()                      │
-│        └── Synchronizes live Due Soon & Overdue alerts │
-│            based on today's date                       │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│            Real-Time Evaluated Alerts                  │
-│  - Overdue: EQ-2024-005, EQ-2024-009, EQ-2024-015...   │
-│  - Due Soon: Instruments within 30-day window          │
-│  - Full email details & urgency badges included        │
+│         equipmentService.create()                      │
+│  - Detects status === 'OVERDUE' | 'DUE_SOON'           │
+│  - Calls notificationService.syncLiveCalibrationAlerts │
+│  - Inserts live alert into notifications store/DB      │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│                  In-App Notification Feed              │
-│  - Bell icon badge shows live unread count             │
-│  - Dropdown & /notifications page displays alerts      │
-│  - "View Email" opens formatted ISO 17025 notice       │
+│         App.tsx (handleAddEquipment)                   │
+│  - Detects Overdue / Due Soon status                   │
+│  - Optimistically prepends alert to notifications feed │
+│  - Calls loadBackendData() to refresh /api/notifs      │
+│  - Bell icon badge increments immediately              │
 └────────────────────────────────────────────────────────┘
 ```
 
 #### Detailed Changes
-1. **`server/services/notification.service.ts`**:
-   - Add automated synchronization logic: upon `list()`, dynamically evaluate all equipment records against current date.
-   - For every equipment with status `OVERDUE` or `DUE_SOON` (or with `next_calibration_date` overdue or within notice window), ensure an up-to-date alert notification exists with complete `email_details`.
-   - Support both PostgreSQL database pool and in-memory fallback.
-2. **`src/services/api.ts`**:
-   - Ensure `equipmentCode` is extracted from either `n.equipment_code` or `n.email_details?.equipment_code`.
-3. **`src/App.tsx`**:
-   - Update filtering logic so notifications match valid equipment by either `n.equipmentId` OR `n.equipmentCode`.
+1. **`server/services/equipment.service.ts`**:
+   - In `create()` and `update()`, if `status === 'OVERDUE' || status === 'DUE_SOON'`, invoke `notificationService.syncLiveCalibrationAlerts()`.
+2. **`src/App.tsx`**:
+   - In `handleAddEquipment()`, if `newEquip.status === 'Overdue'` or `'Due Soon'`, construct and prepend a `CALIBRATION_OVERDUE` or `CALIBRATION_DUE_SOON` notification alert with full email details.
+   - In `handleUpdateEquipment()`, ensure notifications are refreshed from the backend.
+3. **`src/pages/AddEquipmentPage.tsx`**:
+   - Ensure the created equipment object passed to `onAddEquipment` retains the calculated `status` and `nextCalibrationDate`.
 
 ---
 
 ### 2. Verification Plan
 - **Verification Tests**:
-  - Test `GET /api/notifications` and verify all overdue and due soon instruments appear in the response payload.
-  - Test mark-as-read endpoint (`PATCH /api/notifications/:id/read`).
-  - Run full test suite (`npm run test:e2e`).
+  - Create a new equipment with overdue last calibration date (e.g. 200 days ago with 180-day interval).
+  - Verify that a `CALIBRATION_OVERDUE` alert appears immediately in `/api/notifications`.
+  - Create a new equipment with due soon calibration date (e.g. 165 days ago with 180-day interval).
+  - Verify that a `CALIBRATION_DUE_SOON` alert appears immediately.
+  - Run `npm run test:e2e`.
   - Run `lint_applet` and `compile_applet`.

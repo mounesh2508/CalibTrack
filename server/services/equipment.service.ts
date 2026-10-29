@@ -244,6 +244,11 @@ export class EquipmentService {
 
     if (isFallback() || !getPool()) {
       memoryStore.equipment.unshift(entity);
+      if (entity.status === 'OVERDUE' || entity.status === 'DUE_SOON') {
+        import('./notification.service').then(({ notificationService }) => {
+          notificationService.syncLiveCalibrationAlerts().catch(() => {});
+        }).catch(() => {});
+      }
       return entity;
     }
 
@@ -275,6 +280,12 @@ export class EquipmentService {
         entity.updated_at,
       ]
     );
+
+    if (entity.status === 'OVERDUE' || entity.status === 'DUE_SOON') {
+      import('./notification.service').then(({ notificationService }) => {
+        notificationService.syncLiveCalibrationAlerts().catch(() => {});
+      }).catch(() => {});
+    }
 
     return entity;
   }
@@ -325,6 +336,11 @@ export class EquipmentService {
       if (index !== -1) {
         memoryStore.equipment[index] = updated;
       }
+      if (updated.status === 'OVERDUE' || updated.status === 'DUE_SOON') {
+        import('./notification.service').then(({ notificationService }) => {
+          notificationService.syncLiveCalibrationAlerts().catch(() => {});
+        }).catch(() => {});
+      }
       return updated;
     }
 
@@ -354,6 +370,12 @@ export class EquipmentService {
         current.id,
       ]
     );
+
+    if (updated.status === 'OVERDUE' || updated.status === 'DUE_SOON') {
+      import('./notification.service').then(({ notificationService }) => {
+        notificationService.syncLiveCalibrationAlerts().catch(() => {});
+      }).catch(() => {});
+    }
 
     return updated;
   }
