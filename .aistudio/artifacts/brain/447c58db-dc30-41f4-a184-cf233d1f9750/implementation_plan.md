@@ -1,16 +1,17 @@
-# Vercel HTTPS Port 443 Email Engine & Strict Assigned Technician Routing Plan
+# Vercel Deployment: Calibrated Status Sync & Persistence Plan
 
-Implement an HTTPS (Port 443) email dispatch engine to eliminate Vercel serverless `FUNCTION_INVOCATION_FAILED` timeouts, and enforce strict calibration alert routing so emails are sent exclusively to the technician assigned by the administrator.
+Ensure that after logging a calibration on Vercel deployments, the equipment status immediately updates from `OVERDUE` or `DUE SOON` to `CALIBRATED` in the equipment list, and remains persisted across page refreshes and serverless invocations.
 
 ---
 
-### User Review & Root Cause Analysis
+### User Review & Critical Context
 
 > [!IMPORTANT]
-> **Root Cause of `FUNCTION_INVOCATION_FAILED bom1::...` on Vercel**:
-> Vercel serverless functions execute inside AWS Lambda environments (such as region `bom1` in Mumbai). AWS Lambda blocks raw outbound TCP traffic on ports 25, 465, and 587. When `nodemailer` attempted a direct TCP socket connection to `smtp.gmail.com:465`, the connection hung for 10 seconds until Vercel forcibly terminated the function with `FUNCTION_INVOCATION_FAILED`.
-> 
-> **Solution**: Switch to **HTTPS (Port 443)** for email transport. HTTPS port 443 traffic is standard outbound web traffic and is never blocked by Vercel or cloud firewalls.
+> **Root Cause Analysis on Vercel Deployment**:
+> 1. **Serverless Ephemeral Memory Overwrites**: On Vercel serverless deployments without a dedicated persistent database (or across separate lambda microVMs), `POST /api/calibration-records` updates one serverless container instance, while the subsequent `GET /api/equipment` hits a different serverless instance that re-seeds default uncalibrated equipment.
+> 2. **Client Cache Reconciliation Block**: In `src/services/api.ts` (`fetchEquipment()`), local cached equipment in `localStorage` was only merged for *new* equipment codes (`!knownCodes.has(...)`). It discarded local calibration updates for existing assets when the backend returned the default list.
+> 3. **Database Update Matching**: In `server/services/equipment.service.ts`, the database `UPDATE` query matched `WHERE id = ?`. If an equipment item was accessed by its code (e.g. `EQ-2024-002`) rather than internal ID, database rows were not updated.
+> 4. **Missing LocalStorage Persistence in Handlers**: In `src/App.tsx`, `handleAddCalibrationRecord` updated React memory state but did not persist the updated equipment to `localStorage.setItem('calibtrack_local_equipment', ...)`, causing fresh API fetches to revert the status.
 
 ---
 
@@ -18,32 +19,34 @@ Implement an HTTPS (Port 443) email dispatch engine to eliminate Vercel serverle
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                   Admin Action                         │
-│  - Registers/edits equipment                           │
-│  - Selects Assigned Technician from staff registry    │
-│  - Technician email stored: assigned_technician_email  │
+│                   Technician / Admin                   │
+│   - Submits Calibration: Date, Outcome, Certificate    │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│         Calibration Alert Evaluator                    │
-│  - Inspects due soon / overdue instrument              │
-│  - Resolves RECIPIENT: ONLY assigned technician email  │
-│  - Excludes all other emails                           │
+│             Calibration Dispatch & Persistence         │
+│  - POST /api/calibration-records                       │
+│  - Backend: Updates equipment row (DB & memory)        │
+│    WHERE id = ? OR equipment_code = ?                  │
+│  - Sets status = 'CALIBRATED', next_calibration_date   │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│         HTTPS Port 443 Email Engine                    │
-│  - Transmits via HTTPS (Port 443) REST / Webhook       │
-│  - 3.5s timeout protection (never hangs Vercel 10s)    │
-│  - Zero socket blocks -> Immediate HTTP 200 response   │
+│         Frontend Reconciliation & Resilient Cache      │
+│  - handleAddCalibrationRecord updates equipment list   │
+│  - Synchronizes to localStorage: 'calibtrack_..._eq'   │
+│  - api.fetchEquipment merges latest calibration dates  │
+│    even if serverless instance has cold-started        │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│              Assigned Technician Inbox                 │
-│  - Reaches ONLY the technician assigned to instrument  │
+│                  Equipment List View                   │
+│  - Badge instantly flips to green: 'CALIBRATED'        │
+│  - Next calibration date scheduled in future           │
+│  - Overdue / Due Soon count decrements by 1            │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -51,42 +54,36 @@ Implement an HTTPS (Port 443) email dispatch engine to eliminate Vercel serverle
 
 ### 1. Key Changes
 
-#### A. HTTPS Port 443 Email Dispatch Engine (`server/services/email.service.ts`)
-- Implement HTTPS-based email delivery over port 443 using HTTP REST Webhook / Gmail API with 3.5-second strict timeout guards.
-- Implement fast-failover TCP socket fallback with 2-second timeout protection so that even if SMTP is attempted, it will never exceed Vercel's 10-second serverless timeout.
-- Ensure all registration, login verification, test email, and alert endpoints return clean JSON responses without throwing unhandled `FUNCTION_INVOCATION_FAILED` serverless exceptions.
+#### A. Full Dual-Key Database Update (`server/services/equipment.service.ts`)
+- Update `equipmentService.update` SQL statements to match `WHERE id = ? OR equipment_code = ?`.
+- Ensure `last_calibration_date`, `next_calibration_date`, and `status = 'CALIBRATED'` are reliably written to PostgreSQL / MySQL when connected.
+- In `reminderService.evaluateAndDispatch()`, if an active database pool exists, evaluate equipment from the live database rather than only the local memory array.
 
-#### B. Strict Assigned Technician Email Routing (`server/services/reminder.service.ts` & `server/services/notification.service.ts`)
-- In `reminderService.gatherRecipients(equipment)`:
-  - Extract `equipment.assigned_technician_email` (or resolve the assigned technician's email from the registered staff list).
-  - **Filter to ONLY that assigned technician's email**.
-  - If no technician is assigned, fallback only to the administrator. Do not broadcast to any unassigned staff.
-- In `notificationService.syncLiveCalibrationAlerts()`:
-  - Deliver alert emails exclusively to the equipment's assigned technician.
+#### B. Resilient Client Cache Reconciliation (`src/services/api.ts`)
+- In `api.fetchEquipment()`:
+  - When merging from `localStorage` (`calibtrack_local_equipment`), do not simply discard matching equipment codes.
+  - If a local record has a more recent `lastCalibrationDate` or explicit `CALIBRATED` status following a user action, preserve and apply the updated calibration metrics.
+- In `api.updateEquipment()` and `api.createCalibrationRecord()`:
+  - Automatically sync the returned `updatedEquipment` to `localStorage` immediately upon API response.
 
-#### C. Equipment Technician Assignment in UI (`src/pages/AddEquipmentPage.tsx` & `src/pages/EquipmentDetailsPage.tsx`)
-- In `AddEquipmentPage.tsx`:
-  - Fetch registered staff technicians (`api.listUsers()`).
-  - Replace the free-text assignee input with a searchable/selectable dropdown of registered technicians (displaying name, email, and role).
-  - Pass `assigned_technician` and `assigned_technician_email` in the payload to `api.createEquipment()`.
-- In `EquipmentDetailsPage.tsx`:
-  - Allow the admin to reassign the equipment to any registered technician.
-
-#### D. Server & API Persistence (`server/services/equipment.service.ts` & `server/models/index.ts`)
-- Add `assigned_technician` and `assigned_technician_email` fields to `EquipmentEntity` in `server/models/index.ts`.
-- Persist both fields in `equipment.service.ts` (both memory store and database).
+#### C. State Synchronization & Persistence (`src/App.tsx` & `src/pages/CalibrationPage.tsx`)
+- In `src/App.tsx` (`handleAddCalibrationRecord` & `handleQuickCalibrateSubmit`):
+  - Save the updated equipment list directly to `localStorage.setItem('calibtrack_local_equipment', ...)` so subsequent background fetches (`loadBackendData`) never wipe out the calibrated state.
+  - In `loadBackendData()`, compare incoming backend items with local calibration updates so cold serverless responses never downgrade a calibrated asset back to `OVERDUE` or `DUE_SOON`.
+- In `src/pages/CalibrationPage.tsx`:
+  - When logging a calibration, pass the updated equipment returned by the API back to `onAddCalibrationRecord`.
 
 ---
 
-### 2. Verification Plan & Results
+### 2. Verification Plan
 
-- **Vercel Serverless Invocation Safety**:
-  - [x] Verified `POST /api/reminders/test-email` completes in under 2 seconds over HTTPS port 443 with HTTP 200 and safe diagnostics (no unhandled 500 or timeout).
-  - [x] Eliminated `FUNCTION_INVOCATION_FAILED bom1::...` by adding 2.5s hard `Promise.race` timeout protection so SMTP sockets never exceed Vercel's 10s execution limit.
-- **Assigned Technician Isolation**:
-  - [x] Verified equipment assigned to `mohanraja.ad24@bitsathy.ac.in` dispatches alerts exclusively to `['mohanraja.ad24@bitsathy.ac.in']` and excludes all other staff.
-  - [x] Verified dropdown assignment in UI automatically passes `assigned_technician` and `assigned_technician_email`.
-- **TestSuite & Quality**:
-  - [x] `npm run test:e2e`: 11/11 PASSED (0 failed).
-  - [x] `lint_applet` (`tsc --noEmit`): PASSED (zero errors).
-  - [x] `compile_applet` (`npm run build`): PASSED (production build succeeded).
+- **Calibration State Flip**:
+  - Select an overdue equipment (e.g. `EQ-2024-002` or `EQ-2024-009`).
+  - Log a calibration with outcome `Passed`.
+  - Verify that the status in the Equipment List immediately updates to **CALIBRATED** with a green badge and future due date.
+- **Persistence Across Refresh**:
+  - Refresh the browser page / re-fetch equipment list.
+  - Confirm the equipment remains **CALIBRATED** and does not revert to `OVERDUE` or `DUE_SOON`.
+- **E2E & Build Tests**:
+  - Run `npm run test:e2e` to verify all metrology workflows pass.
+  - Run `tsc --noEmit` and `npm run build`.
