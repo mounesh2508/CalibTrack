@@ -1052,6 +1052,13 @@ export const api = {
     });
   },
 
+  async sendTestEmail(email?: string): Promise<{ success: boolean; message: string; recipient: string; timestamp: string }> {
+    return request<any>('/reminders/test-email', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
   async triggerCalibrationAlertEmails(): Promise<{
     success: boolean;
     evaluatedCount: number;

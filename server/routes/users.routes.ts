@@ -107,15 +107,17 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    // 3. Dispatch real welcome email via Gmail SMTP asynchronously
-    emailService.sendStaffWelcomeEmail({
-      to: email,
-      name,
-      role,
-      password,
-    }).catch((emailErr) => {
+    // 3. Dispatch real welcome email via Gmail SMTP (awaited for serverless compatibility)
+    try {
+      await emailService.sendStaffWelcomeEmail({
+        to: email,
+        name,
+        role,
+        password,
+      });
+    } catch (emailErr: any) {
       console.warn('[Users API] Welcome email send warning:', emailErr?.message);
-    });
+    }
 
     console.log(`[Users API] New staff registered by Admin: ${name} (${email}) as ${role}`);
 

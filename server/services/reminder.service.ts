@@ -353,15 +353,17 @@ export class ReminderService {
           dispatchedAt,
         });
 
-        // Transmit real ISO 17025 metrology alert email to all gathered staff recipients via Gmail SMTP
+        // Transmit real ISO 17025 metrology alert email to all gathered staff recipients via Gmail SMTP (awaited for serverless execution)
         if (settings.email_enabled && recipients.length > 0) {
-          emailService.sendAlertEmail({
-            to: recipients,
-            subject,
-            html: htmlBody,
-          }).catch((err: any) => {
+          try {
+            await emailService.sendAlertEmail({
+              to: recipients,
+              subject,
+              html: htmlBody,
+            });
+          } catch (err: any) {
             console.warn(`[ReminderService] Email dispatch failed for ${eq.equipment_code}:`, err?.message);
-          });
+          }
         }
 
         console.log(`[CalibTrack Reminder] Gmail alert dispatched for ${eq.equipment_code} (${status}) to: ${recipients.join(', ')}`);

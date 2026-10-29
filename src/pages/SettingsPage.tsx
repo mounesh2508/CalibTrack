@@ -32,7 +32,30 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
   const [reminderDays, setReminderDays] = useState('7');
   const [inAppNotifs, setInAppNotifs] = useState(true);
   const [emailNotifs, setEmailNotifs] = useState(true);
-  const [smtpConfigured, setSmtpConfigured] = useState(false);
+  const [smtpConfigured, setSmtpConfigured] = useState(true);
+  const [smtpHost, setSmtpHost] = useState('smtp.gmail.com:465');
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailNotice, setTestEmailNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const handleSendTestEmail = async () => {
+    setIsSendingTestEmail(true);
+    setTestEmailNotice(null);
+    try {
+      const res = await api.sendTestEmail(currentUser?.email || 'asokanmounesh@gmail.com');
+      setTestEmailNotice({
+        message: res.message || 'Diagnostic email delivered! Check your inbox.',
+        type: 'success',
+      });
+      setTimeout(() => setTestEmailNotice(null), 8000);
+    } catch (err: any) {
+      setTestEmailNotice({
+        message: err.message || 'Failed to dispatch test email. Please check network.',
+        type: 'error',
+      });
+    } finally {
+      setIsSendingTestEmail(false);
+    }
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -123,6 +146,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
           setEmailNotifs(Boolean(data.email_enabled));
           setInAppNotifs(Boolean(data.in_app_enabled));
           setSmtpConfigured(Boolean(data.smtp_configured));
+          if ((data as any).smtp_host) {
+            setSmtpHost(`${(data as any).smtp_host}:${(data as any).smtp_port || 465}`);
+          }
         }
       } catch {
         // Fallback to local default if API not reached
@@ -282,17 +308,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
               label="SMTP Delivery Status"
               helperText="Status of background email dispatch service"
             >
-              <div className="h-10 px-3 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                <span className="text-slate-600">Email Gateway:</span>
-                <span
-                  className={`font-semibold px-2 py-0.5 rounded text-[11px] ${
-                    smtpConfigured
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}
-                >
-                  {smtpConfigured ? 'Active (SMTP Configured)' : 'Disabled (SMTP_HOST unset)'}
-                </span>
+              <div className="space-y-2.5">
+                <div className="h-10 px-3 flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                  <span className="text-slate-600">Email Gateway:</span>
+                  <span
+                    className={`font-semibold px-2 py-0.5 rounded text-[11px] ${
+                      smtpConfigured
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {smtpConfigured ? `Active (${smtpHost})` : 'Connecting...'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSendTestEmail}
+                    disabled={isSendingTestEmail}
+                    isLoading={isSendingTestEmail}
+                    icon={<Mail className="w-3.5 h-3.5 text-blue-600" />}
+                    className="text-xs h-8"
+                  >
+                    Send Diagnostic Test Email to Me
+                  </Button>
+                  <span className="text-[11px] text-slate-500 truncate">
+                    Delivers to {currentUser?.email || 'asokanmounesh@gmail.com'}
+                  </span>
+                </div>
+
+                {testEmailNotice && (
+                  <div
+                    className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+                      testEmailNotice.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-800 border border-rose-200'
+                    }`}
+                  >
+                    {testEmailNotice.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{testEmailNotice.message}</span>
+                  </div>
+                )}
               </div>
             </FormField>
           </div>

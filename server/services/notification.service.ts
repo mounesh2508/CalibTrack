@@ -68,6 +68,20 @@ export class NotificationService {
               created_at: new Date().toISOString(),
               email_details: emailDetails as any,
             });
+
+            // Immediately transmit real metrology alert email to all registered staff (awaited for Vercel serverless)
+            try {
+              const { reminderService } = await import('./reminder.service');
+              const { emailService } = await import('./email.service');
+              const recipients = await reminderService.gatherRecipientsAsync(eq);
+              await emailService.sendAlertEmail({
+                to: recipients,
+                subject: emailDetails.subject,
+                html: emailDetails.html_body,
+              });
+            } catch (emailErr: any) {
+              console.warn('[NotificationService] Alert email delivery warning:', emailErr?.message);
+            }
           } else {
             // Keep status and days remaining up to date
             existingMemory.type = alertType;

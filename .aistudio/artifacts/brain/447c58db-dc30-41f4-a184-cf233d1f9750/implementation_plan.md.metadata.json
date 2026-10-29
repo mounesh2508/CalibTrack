@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to fix admin staff registration (direct creation, immediate persistence, and UI display in staff list) and ensure real Gmail SMTP calibration alert emails are dispatched to all registered staff members.",
-  "updatedAt":  "2026-10-29T07:12:10.340850824Z",
+  "summary":  "Detailed root cause explanation of why emails were not being received on Vercel deployments, along with an implementation plan to fix serverless unawaited promises, dispatch real emails on alert detection, and add a live SMTP test dispatch button in Settings.",
+  "updatedAt":  "2026-10-29T09:06:35.763955622Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

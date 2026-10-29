@@ -1,30 +1,33 @@
-# Direct Admin Staff Registration & Multi-Recipient Calibration Email Dispatch
+# Vercel Deployment Email Delivery Resolution Plan
 
-Ensure administrators can directly register new laboratory staff members with immediate database persistence and live UI updates in the staff registry, and ensure dispatched calibration alert emails reach all staff members registered by the admin via Gmail SMTP.
+Diagnose and resolve why emails were not delivered in Vercel serverless deployments, fix the asynchronous event-loop freeze in serverless functions, ensure real-time email dispatch on new alerts, and add a live diagnostic email trigger.
 
 ---
 
-### User Review & Root Cause Analysis
+### Root Cause Analysis: Why No Email Was Sent on Vercel
 
 > [!IMPORTANT]
-> The exact root causes behind the two reported issues have been identified:
+> A live diagnostic test confirmed that your Gmail SMTP credentials (`asokanmounesh@gmail.com` + App Password) are **100% valid** (Message ID `<63c141aa-e69c-b033-13e7-4a74ed302a0b@gmail.com>` delivered successfully).
+> 
+> However, on Vercel serverless deployments, emails were not arriving due to three specific issues:
 
-1. **Staff Registration in Admin Account Was Blocked / Not Displayed**:
-   - **Root Cause**: In `SettingsPage.tsx`, registering staff routed through `api.register()` which required entering the staff member's personal 6-digit OTP in an on-screen modal before adding them to the user list. If the admin didn't have the employee's code, the user remained trapped in `memoryStore.otps` and was never inserted into `users`.
-   - **Root Cause 2**: `server/routes/users.routes.ts` lacked a dedicated `POST /api/users` endpoint. In addition, `GET /api/users` only read from in-memory objects rather than querying the persistent database.
-   - **Fix**:
-     - Implement `POST /api/users` (Admin Staff Creation): Creates staff immediately with status `ACTIVE` and `is_email_verified = true` in both PostgreSQL and memoryStore.
-     - Automatically dispatch an ISO 17025 Welcome & Account Created notification to the new employee's email via Gmail SMTP.
-     - Update `SettingsPage.tsx` so adding staff directly saves and immediately updates the **Registered Staff Members** list in the UI without requiring an OTP prompt from the administrator.
-     - Implement `DELETE /api/users/:id` to allow removing staff.
+1. **Un-Awaited Floating Promises in Vercel Serverless Functions**:
+   - In `server/routes/users.routes.ts` and `server/services/reminder.service.ts`, email calls were invoked as floating background promises without `await`:
+     ```typescript
+     emailService.sendStaffWelcomeEmail(...).catch(...); // NOT AWAITED
+     return res.status(201).json(...);
+     ```
+   - **How Vercel Works**: The moment a serverless function executes `res.json(...)`, Vercel **immediately freezes and terminates the container execution environment**. Any un-awaited background network sockets (like nodemailer connecting to Gmail SMTP) are instantly terminated before the TCP handshake completes.
+   - **Fix**: Every email dispatch (`sendAlertEmail`, `sendStaffWelcomeEmail`) must be strictly `await`ed before sending the HTTP response.
 
-2. **Dispatched Alerts Did Not Actually Send Real Emails to All Registered Staff**:
-   - **Root Cause**: `evaluateAndDispatch()` in `reminder.service.ts` only logged `[CalibTrack Reminder] Gmail alert dispatched...` to the console and saved details to the in-app notification feed, but never actually invoked `nodemailer` / `emailService` to transmit real emails over the internet!
-   - **Root Cause 2**: Recipient gathering only inspected memory defaults and fell back to dummy addresses (`sarah.lin@calibtrack.lab`) instead of querying all registered staff emails from the database.
-   - **Fix**:
-     - Implement `sendAlertEmail()` in `emailService` using our verified Gmail SMTP transporter (`smtp.gmail.com:465` with `587` fallback).
-     - In `reminderService.gatherRecipients()`, dynamically query all registered staff emails (admins and technicians from both database and memory store).
-     - In `reminderService.evaluateAndDispatch()`, actively transmit the ISO 17025 calibration alert email to all registered staff email addresses.
+2. **Alerts Were Only Generating In-App Cards, Not Transmitting Emails**:
+   - When instruments were added or viewed in the app, `notificationService.syncLiveCalibrationAlerts()` formatted `email_details` for the in-app modal preview, but never actually invoked `emailService.sendAlertEmail()`.
+   - Emails were only tied to `POST /api/reminders/trigger`.
+   - **Fix**: When `syncLiveCalibrationAlerts()` detects a new or updated `CALIBRATION_OVERDUE` or `CALIBRATION_DUE_SOON` instrument, actively invoke and await `emailService.sendAlertEmail()` to send an email to all registered staff and the admin.
+
+3. **Lack of a Direct Email Diagnostic Tool in the UI**:
+   - Admins had no way to verify live SMTP delivery directly from the browser without waiting for an automated cron cycle.
+   - **Fix**: Add a dedicated `POST /api/reminders/test-email` route and a "Send Test Email to Me" button in the Settings panel that delivers an immediate confirmation email to `asokanmounesh@gmail.com` and displays the Gmail Message ID in the UI.
 
 ---
 
@@ -32,55 +35,44 @@ Ensure administrators can directly register new laboratory staff members with im
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                   Admin Settings UI                    │
-│  - Adds new staff: Name, Email, Password, Role         │
-└──────────────────────────┬─────────────────────────────┘
-                           │ POST /api/users
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│         Backend Staff Registration Engine              │
-│  - Persists new user to DB & memory store              │
-│  - Sends Welcome & Account Credentials Email           │
-│  - Returns new staff member to UI                      │
+│             Action (Staff Register, Alert, Test)       │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│              Live Staff List Updates                   │
-│  - Immediately displayed in Registered Staff Members   │
-│  - Role toggle (Admin <-> Technician) functional       │
-└────────────────────────────────────────────────────────┘
-
+│             Vercel Serverless Function                 │
+│  - Gathers recipient list                              │
+│  - AWAITS emailService.sendAlertEmail()                │
+│    └── Connects to smtp.gmail.com:465 (SSL)            │
+│    └── Waits for SMTP 250 OK Response from Google      │
+│  - Only THEN sends HTTP JSON response to client        │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
 ┌────────────────────────────────────────────────────────┐
-│       Calibration Alert & Reminder Dispatcher          │
-│  - Gathers ALL registered staff emails from registry   │
-│  - Transmits real email via Gmail SMTP (port 465/587)  │
-│  - Reaches every staff member registered by the admin  │
+│            Google Mail Server Delivery                 │
+│  - Delivered to asokanmounesh@gmail.com & staff inboxes│
 └────────────────────────────────────────────────────────┘
 ```
 
 #### Detailed Changes
 1. **`server/routes/users.routes.ts`**:
-   - Add `POST /api/users`: Creates a staff member directly, stores password hash, adds to DB and memory store, and sends a welcome email.
-   - Add `DELETE /api/users/:id`: Allows admins to remove staff accounts.
-   - Update `GET /api/users`: Queries PostgreSQL when connected with memoryStore fallback.
-2. **`server/services/email.service.ts`**:
-   - Add `sendAlertEmail(payload)`: Transmits rich HTML calibration alerts to multi-recipient lists via Gmail SMTP.
-   - Add `sendStaffWelcomeEmail(payload)`: Transmits account creation notice with credentials.
-3. **`server/services/reminder.service.ts`**:
-   - In `gatherRecipients()`: Dynamically pull all active staff emails from database and memory store.
-   - In `evaluateAndDispatch()`: Actively dispatch emails via `emailService.sendAlertEmail()`.
-4. **`src/services/api.ts`**:
-   - Add `createUser(name, email, role, password)` and `deleteUser(id)`.
+   - `await emailService.sendStaffWelcomeEmail(...)` before returning HTTP 201 so the serverless container does not freeze prematurely.
+2. **`server/services/reminder.service.ts`**:
+   - In `evaluateAndDispatch()`, sequentially `await emailService.sendAlertEmail(...)` for each overdue/due soon equipment.
+3. **`server/services/notification.service.ts`**:
+   - In `syncLiveCalibrationAlerts()`, when a new alert is generated, `await emailService.sendAlertEmail(...)` to all staff.
+4. **`server/routes/reminder.routes.ts`**:
+   - Add `POST /api/reminders/test-email` that sends a live verification test email to `asokanmounesh@gmail.com` and returns `{ success: true, messageId: ... }`.
 5. **`src/pages/SettingsPage.tsx`**:
-   - Update `handleRegisterStaffSubmit` to call `api.createUser()`, display success notification, and immediately refresh the staff list.
+   - Add a **"Send Test Metrology Email"** button next to the active SMTP Gateway badge so you can verify live delivery with one click.
 
 ---
 
 ### 2. Verification Plan
 - **Verification Tests**:
-  - Test `POST /api/users` with a new staff member (e.g. `mohanraja.ad24@bitsathy.ac.in`).
-  - Verify that the staff member is returned in `GET /api/users`.
-  - Trigger reminder dispatch via `POST /api/reminders/trigger` and verify real email transmission to all registered staff emails via Gmail SMTP.
+  - Test `POST /api/reminders/test-email` and verify Gmail SMTP 250 OK delivery to `asokanmounesh@gmail.com`.
+  - Test staff creation with awaited welcome email.
+  - Test reminder trigger with awaited multi-recipient alert emails.
   - Run `npm run test:e2e`.
   - Run `lint_applet` and `compile_applet`.
