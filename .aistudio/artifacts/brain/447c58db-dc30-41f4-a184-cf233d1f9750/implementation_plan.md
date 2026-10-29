@@ -1,23 +1,30 @@
-# Instant In-App Notification Alerts When Adding Due Soon or Overdue Equipment
+# Direct Admin Staff Registration & Multi-Recipient Calibration Email Dispatch
 
-Ensure that registering or updating an instrument whose calibration deadline is **Due Soon** ($\le 30$ days) or **Overdue** immediately triggers and displays an in-app calibration alert in the notification center and bell dropdown.
+Ensure administrators can directly register new laboratory staff members with immediate database persistence and live UI updates in the staff registry, and ensure dispatched calibration alert emails reach all staff members registered by the admin via Gmail SMTP.
 
 ---
 
 ### User Review & Root Cause Analysis
 
 > [!IMPORTANT]
-> The exact root causes preventing alerts when adding Due Soon or Overdue instruments have been diagnosed:
+> The exact root causes behind the two reported issues have been identified:
 
-- **Root Cause 1 (`handleAddEquipment` in `src/App.tsx`)**:
-  - When a user submitted the form in `AddEquipmentPage.tsx`, `handleAddEquipment` only added a generic `system` notification: *"New Equipment Registered: placed on schedule"*.
-  - It did not evaluate `newEquip.status`. If the instrument was registered with past calibration dates making it **Overdue** or **Due Soon**, no urgent alert was created in the frontend notification state.
-  - **Fix**: In `src/App.tsx`, evaluate `newEquip.status`. If `newEquip.status === 'Overdue'` or `newEquip.status === 'Due Soon'`, immediately generate the corresponding high-priority alert (`category: 'alert'` / `'reminder'`) with ISO 17025 metrology email details.
-- **Root Cause 2 (`server/services/equipment.service.ts`)**:
-  - In `equipmentService.create()` and `equipmentService.update()`, the backend computed `status = 'OVERDUE'` or `'DUE_SOON'`, but never triggered `notificationService.syncLiveCalibrationAlerts()`.
-  - **Fix**: Automatically invoke `notificationService.syncLiveCalibrationAlerts()` inside `equipmentService.create()` and `equipmentService.update()` whenever a created or modified instrument is overdue or due soon.
-- **Root Cause 3 (Notification Feed Synchronization in `AddEquipmentPage.tsx`)**:
-  - Ensure that after equipment registration, `loadBackendData()` re-fetches notifications from `/api/notifications`, guaranteeing the bell icon badge and notification feed immediately reflect the new alert.
+1. **Staff Registration in Admin Account Was Blocked / Not Displayed**:
+   - **Root Cause**: In `SettingsPage.tsx`, registering staff routed through `api.register()` which required entering the staff member's personal 6-digit OTP in an on-screen modal before adding them to the user list. If the admin didn't have the employee's code, the user remained trapped in `memoryStore.otps` and was never inserted into `users`.
+   - **Root Cause 2**: `server/routes/users.routes.ts` lacked a dedicated `POST /api/users` endpoint. In addition, `GET /api/users` only read from in-memory objects rather than querying the persistent database.
+   - **Fix**:
+     - Implement `POST /api/users` (Admin Staff Creation): Creates staff immediately with status `ACTIVE` and `is_email_verified = true` in both PostgreSQL and memoryStore.
+     - Automatically dispatch an ISO 17025 Welcome & Account Created notification to the new employee's email via Gmail SMTP.
+     - Update `SettingsPage.tsx` so adding staff directly saves and immediately updates the **Registered Staff Members** list in the UI without requiring an OTP prompt from the administrator.
+     - Implement `DELETE /api/users/:id` to allow removing staff.
+
+2. **Dispatched Alerts Did Not Actually Send Real Emails to All Registered Staff**:
+   - **Root Cause**: `evaluateAndDispatch()` in `reminder.service.ts` only logged `[CalibTrack Reminder] Gmail alert dispatched...` to the console and saved details to the in-app notification feed, but never actually invoked `nodemailer` / `emailService` to transmit real emails over the internet!
+   - **Root Cause 2**: Recipient gathering only inspected memory defaults and fell back to dummy addresses (`sarah.lin@calibtrack.lab`) instead of querying all registered staff emails from the database.
+   - **Fix**:
+     - Implement `sendAlertEmail()` in `emailService` using our verified Gmail SMTP transporter (`smtp.gmail.com:465` with `587` fallback).
+     - In `reminderService.gatherRecipients()`, dynamically query all registered staff emails (admins and technicians from both database and memory store).
+     - In `reminderService.evaluateAndDispatch()`, actively transmit the ISO 17025 calibration alert email to all registered staff email addresses.
 
 ---
 
@@ -25,45 +32,55 @@ Ensure that registering or updating an instrument whose calibration deadline is 
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│             User Registers Instrument                  │
-│  - Selects past last calibration date                  │
-│  - Computed status: OVERDUE or DUE_SOON                │
+│                   Admin Settings UI                    │
+│  - Adds new staff: Name, Email, Password, Role         │
 └──────────────────────────┬─────────────────────────────┘
-                           │ POST /api/equipment
+                           │ POST /api/users
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│         equipmentService.create()                      │
-│  - Detects status === 'OVERDUE' | 'DUE_SOON'           │
-│  - Calls notificationService.syncLiveCalibrationAlerts │
-│  - Inserts live alert into notifications store/DB      │
+│         Backend Staff Registration Engine              │
+│  - Persists new user to DB & memory store              │
+│  - Sends Welcome & Account Credentials Email           │
+│  - Returns new staff member to UI                      │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│         App.tsx (handleAddEquipment)                   │
-│  - Detects Overdue / Due Soon status                   │
-│  - Optimistically prepends alert to notifications feed │
-│  - Calls loadBackendData() to refresh /api/notifs      │
-│  - Bell icon badge increments immediately              │
+│              Live Staff List Updates                   │
+│  - Immediately displayed in Registered Staff Members   │
+│  - Role toggle (Admin <-> Technician) functional       │
+└────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────┐
+│       Calibration Alert & Reminder Dispatcher          │
+│  - Gathers ALL registered staff emails from registry   │
+│  - Transmits real email via Gmail SMTP (port 465/587)  │
+│  - Reaches every staff member registered by the admin  │
 └────────────────────────────────────────────────────────┘
 ```
 
 #### Detailed Changes
-1. **`server/services/equipment.service.ts`**:
-   - In `create()` and `update()`, if `status === 'OVERDUE' || status === 'DUE_SOON'`, invoke `notificationService.syncLiveCalibrationAlerts()`.
-2. **`src/App.tsx`**:
-   - In `handleAddEquipment()`, if `newEquip.status === 'Overdue'` or `'Due Soon'`, construct and prepend a `CALIBRATION_OVERDUE` or `CALIBRATION_DUE_SOON` notification alert with full email details.
-   - In `handleUpdateEquipment()`, ensure notifications are refreshed from the backend.
-3. **`src/pages/AddEquipmentPage.tsx`**:
-   - Ensure the created equipment object passed to `onAddEquipment` retains the calculated `status` and `nextCalibrationDate`.
+1. **`server/routes/users.routes.ts`**:
+   - Add `POST /api/users`: Creates a staff member directly, stores password hash, adds to DB and memory store, and sends a welcome email.
+   - Add `DELETE /api/users/:id`: Allows admins to remove staff accounts.
+   - Update `GET /api/users`: Queries PostgreSQL when connected with memoryStore fallback.
+2. **`server/services/email.service.ts`**:
+   - Add `sendAlertEmail(payload)`: Transmits rich HTML calibration alerts to multi-recipient lists via Gmail SMTP.
+   - Add `sendStaffWelcomeEmail(payload)`: Transmits account creation notice with credentials.
+3. **`server/services/reminder.service.ts`**:
+   - In `gatherRecipients()`: Dynamically pull all active staff emails from database and memory store.
+   - In `evaluateAndDispatch()`: Actively dispatch emails via `emailService.sendAlertEmail()`.
+4. **`src/services/api.ts`**:
+   - Add `createUser(name, email, role, password)` and `deleteUser(id)`.
+5. **`src/pages/SettingsPage.tsx`**:
+   - Update `handleRegisterStaffSubmit` to call `api.createUser()`, display success notification, and immediately refresh the staff list.
 
 ---
 
 ### 2. Verification Plan
 - **Verification Tests**:
-  - Create a new equipment with overdue last calibration date (e.g. 200 days ago with 180-day interval).
-  - Verify that a `CALIBRATION_OVERDUE` alert appears immediately in `/api/notifications`.
-  - Create a new equipment with due soon calibration date (e.g. 165 days ago with 180-day interval).
-  - Verify that a `CALIBRATION_DUE_SOON` alert appears immediately.
+  - Test `POST /api/users` with a new staff member (e.g. `mohanraja.ad24@bitsathy.ac.in`).
+  - Verify that the staff member is returned in `GET /api/users`.
+  - Trigger reminder dispatch via `POST /api/reminders/trigger` and verify real email transmission to all registered staff emails via Gmail SMTP.
   - Run `npm run test:e2e`.
   - Run `lint_applet` and `compile_applet`.

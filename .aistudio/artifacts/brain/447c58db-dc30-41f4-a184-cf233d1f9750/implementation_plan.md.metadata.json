@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan to ensure immediate in-app notification alerts are generated, dispatched, and displayed whenever an instrument with Due Soon or Overdue status is registered or updated.",
-  "updatedAt":  "2026-10-29T06:23:27.481082027Z",
+  "summary":  "Implementation plan to fix admin staff registration (direct creation, immediate persistence, and UI display in staff list) and ensure real Gmail SMTP calibration alert emails are dispatched to all registered staff members.",
+  "updatedAt":  "2026-10-29T07:12:10.340850824Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

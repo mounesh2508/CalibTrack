@@ -13,12 +13,12 @@ import {
   Users,
   ShieldAlert,
   Plus,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { Card, CardHeader, CardContent } from '../components/common/Card';
 import { FormField, Input, Select } from '../components/common/FormField';
 import { Modal } from '../components/common/Modal';
-import { OtpVerificationModal } from '../components/auth/OtpVerificationModal';
 import { AuthUser } from '../types';
 import { api } from '../services/api';
 
@@ -44,17 +44,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
   const [roleActionId, setRoleActionId] = useState<string | null>(null);
   const [roleNotice, setRoleNotice] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Register New Staff State & OTP Modal
+  // Register New Staff State
   const [isRegisterStaffOpen, setIsRegisterStaffOpen] = useState(false);
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [newStaffRole, setNewStaffRole] = useState<'TECHNICIAN' | 'ADMIN'>('TECHNICIAN');
   const [isRegisteringStaff, setIsRegisteringStaff] = useState(false);
   const [registerStaffError, setRegisterStaffError] = useState<string | null>(null);
-
-  const [isStaffOtpOpen, setIsStaffOtpOpen] = useState(false);
-  const [staffOtpEmail, setStaffOtpEmail] = useState('');
-  const [staffSimulationCode, setStaffSimulationCode] = useState<string | null>(null);
 
   const handleRegisterStaffSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,15 +62,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
     setIsRegisteringStaff(true);
     setRegisterStaffError(null);
     try {
-      const res = await api.register(newStaffName, newStaffEmail, newStaffPassword);
-      setStaffOtpEmail(newStaffEmail.trim());
-      setStaffSimulationCode(res.simulation?.otp_code || null);
+      const res = await api.createStaffUser({
+        name: newStaffName.trim(),
+        email: newStaffEmail.trim(),
+        password: newStaffPassword,
+        role: newStaffRole,
+      });
+
       setIsRegisterStaffOpen(false);
-      setIsStaffOtpOpen(true);
+      setNewStaffName('');
+      setNewStaffEmail('');
+      setNewStaffPassword('');
+      setNewStaffRole('TECHNICIAN');
+
+      setRoleNotice({
+        message: res.message || `Staff member ${newStaffEmail.trim()} successfully registered! Welcome email with login details dispatched via Gmail SMTP.`,
+        type: 'success',
+      });
+
+      // Instantly refresh and show the updated staff list
+      await loadStaff();
+      setTimeout(() => setRoleNotice(null), 5000);
     } catch (err: any) {
-      setRegisterStaffError(err.message || 'Failed to initiate staff registration.');
+      setRegisterStaffError(err.message || 'Failed to register staff account.');
     } finally {
       setIsRegisteringStaff(false);
+    }
+  };
+
+  const handleDeleteStaff = async (staff: AuthUser) => {
+    if (!window.confirm(`Are you sure you want to remove staff member ${staff.name} (${staff.email})?`)) {
+      return;
+    }
+    setRoleActionId(staff.id);
+    try {
+      await api.deleteUser(staff.id);
+      setStaffList((prev) => prev.filter((s) => s.id !== staff.id && s.email !== staff.email));
+      setRoleNotice({
+        message: `Staff member ${staff.name} removed from registry.`,
+        type: 'success',
+      });
+      setTimeout(() => setRoleNotice(null), 4000);
+    } catch (err: any) {
+      setRoleNotice({
+        message: err.message || 'Failed to remove staff account.',
+        type: 'error',
+      });
+    } finally {
+      setRoleActionId(null);
     }
   };
 
@@ -448,6 +484,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
                           >
                             {isTargetAdmin ? 'Demote to Technician' : 'Promote to Admin'}
                           </Button>
+
+                          {!isSelf && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={roleActionId === staff.id}
+                              onClick={() => handleDeleteStaff(staff)}
+                              className="text-xs h-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2"
+                              title="Remove staff member"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     );
@@ -475,7 +524,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
         <Modal
           isOpen={true}
           onClose={() => setIsRegisterStaffOpen(false)}
-          title="Register Laboratory Staff"
+          title="Register Laboratory Staff Member"
         >
           <form onSubmit={handleRegisterStaffSubmit} className="space-y-4 text-xs">
             {registerStaffError && (
@@ -486,7 +535,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
             )}
 
             <p className="text-slate-600 text-xs">
-              Registering new staff dispatches a secure 6-digit verification code to the employee's Gmail address to verify their email before account activation.
+              Directly registers the staff member, activates their laboratory credentials, and dispatches an automated Welcome Notice via Gmail SMTP. They will receive automated ISO 17025 calibration reminder alerts.
             </p>
 
             <FormField label="Full Staff Name" required>
@@ -507,6 +556,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
                 placeholder="alan.croft@laboratory.com"
                 required
               />
+            </FormField>
+
+            <FormField label="Assigned Laboratory Role" required>
+              <Select
+                value={newStaffRole}
+                onChange={(e) => setNewStaffRole(e.target.value as any)}
+              >
+                <option value="TECHNICIAN">Technician (Lab Staff & Metrologist)</option>
+                <option value="ADMIN">Administrator (Full Compliance Privileges)</option>
+              </Select>
             </FormField>
 
             <FormField label="Temporary Password (min 8 chars)" required>
@@ -537,33 +596,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
                 disabled={isRegisteringStaff}
                 icon={isRegisteringStaff ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : undefined}
               >
-                {isRegisteringStaff ? 'Dispatching Code...' : 'Send Verification Code'}
+                {isRegisteringStaff ? 'Registering Staff...' : 'Register Staff Account'}
               </Button>
             </div>
           </form>
         </Modal>
-      )}
-
-      {/* OTP Verification Modal for Admin Registered Staff */}
-      {isStaffOtpOpen && (
-        <OtpVerificationModal
-          isOpen={true}
-          onClose={() => setIsStaffOtpOpen(false)}
-          email={staffOtpEmail}
-          type="REGISTRATION"
-          simulationCode={staffSimulationCode}
-          onSuccess={async () => {
-            setIsStaffOtpOpen(false);
-            setRoleNotice({
-              message: `Staff member ${staffOtpEmail} successfully verified and registered!`,
-              type: 'success',
-            });
-            await loadStaff();
-            setNewStaffName('');
-            setNewStaffEmail('');
-            setNewStaffPassword('');
-          }}
-        />
       )}
     </div>
   );

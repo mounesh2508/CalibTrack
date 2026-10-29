@@ -312,6 +312,96 @@ export class EmailService {
       message: `Verification code generated for ${payload.to}.`,
     };
   }
+
+  /**
+   * Transmits ISO 17025 metrology calibration alert email to multiple staff recipients
+   */
+  async sendAlertEmail(payload: {
+    to: string[];
+    subject: string;
+    html: string;
+  }): Promise<{ success: boolean; dispatchedCount: number; recipients: string[]; error?: string }> {
+    if (!payload.to || payload.to.length === 0) {
+      return { success: false, dispatchedCount: 0, recipients: [] };
+    }
+
+    // Filter to valid unique emails
+    const validEmails = Array.from(
+      new Set(
+        payload.to
+          .map((e) => (e || '').trim().toLowerCase())
+          .filter((e) => e.includes('@') && !e.includes('calibtrack.lab'))
+      )
+    );
+
+    // If no external emails, include user default
+    if (validEmails.length === 0) {
+      validEmails.push('asokanmounesh@gmail.com');
+    }
+
+    let successCount = 0;
+    const errors: string[] = [];
+
+    for (const recipient of validEmails) {
+      const res = await this.sendViaSmtp(recipient, payload.subject, payload.html);
+      if (res.success) {
+        successCount++;
+        console.log(`[EmailService] Calibration alert successfully sent to staff: ${recipient}`);
+      } else {
+        errors.push(`${recipient}: ${res.error}`);
+        console.warn(`[EmailService] Failed to send alert to ${recipient}: ${res.error}`);
+      }
+    }
+
+    return {
+      success: successCount > 0,
+      dispatchedCount: successCount,
+      recipients: validEmails,
+      error: errors.length > 0 ? errors.join('; ') : undefined,
+    };
+  }
+
+  /**
+   * Dispatches Welcome / Account Creation email to newly registered staff
+   */
+  async sendStaffWelcomeEmail(payload: {
+    to: string;
+    name: string;
+    role: string;
+    password?: string;
+  }): Promise<EmailSendResult> {
+    const subject = `Welcome to CalibTrack - Your ${payload.role === 'ADMIN' ? 'Administrator' : 'Technician'} Staff Account`;
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <div style="background: #2563eb; color: #ffffff; padding: 20px 24px; border-radius: 8px; margin-bottom: 20px;">
+          <h2 style="margin: 0; font-size: 20px;">Welcome to CalibTrack Metrology System</h2>
+          <p style="margin: 6px 0 0 0; font-size: 13px; opacity: 0.9;">Laboratory Equipment & Calibration Compliance</p>
+        </div>
+        <p style="font-size: 14px; color: #334155;">Hello <strong>${payload.name}</strong>,</p>
+        <p style="font-size: 14px; color: #334155;">
+          An administrator has created your staff account on the <strong>CalibTrack Laboratory System</strong>.
+        </p>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <table style="width: 100%; font-size: 13px; color: #334155;">
+            <tr><td style="padding: 4px 0; color: #64748b; width: 120px;">Email / Login:</td><td style="font-weight: 600;">${payload.to}</td></tr>
+            <tr><td style="padding: 4px 0; color: #64748b;">Assigned Role:</td><td style="font-weight: 600; color: #2563eb;">${payload.role}</td></tr>
+            ${payload.password ? `<tr><td style="padding: 4px 0; color: #64748b;">Temporary Password:</td><td style="font-family: monospace; font-weight: 700; color: #0f172a;">${payload.password}</td></tr>` : ''}
+          </table>
+        </div>
+        <p style="font-size: 13px; color: #64748b;">
+          You will receive automated ISO/IEC 17025 metrology alerts when laboratory instruments are approaching calibration due dates or are overdue.
+        </p>
+      </div>
+    `.trim();
+
+    const smtpRes = await this.sendViaSmtp(payload.to, subject, html);
+    return {
+      dispatched: smtpRes.success,
+      provider: 'smtp',
+      recipient: payload.to,
+      message: smtpRes.success ? `Welcome email sent to ${payload.to}.` : (smtpRes.error || 'Failed to dispatch welcome email.'),
+    };
+  }
 }
 
 export const emailService = new EmailService();

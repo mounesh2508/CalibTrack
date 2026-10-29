@@ -1,5 +1,6 @@
 import { memoryStore, getPool, isFallback } from '../database/config';
 import { EquipmentEntity, NotificationEntity, ReminderSettingsEntity, NotificationEmailDetails } from '../models';
+import { emailService } from './email.service';
 
 export interface EvaluateResult {
   success: boolean;
@@ -182,32 +183,60 @@ export class ReminderService {
 
   /**
    * Gathers recipient list for calibration notifications:
-   * Both assigned technician and all registered laboratory administrators.
+   * Gathers all registered laboratory staff emails (administrators and technicians).
    */
-  gatherRecipients(eq?: EquipmentEntity): string[] {
+  async gatherRecipientsAsync(eq?: EquipmentEntity): Promise<string[]> {
     const recipients = new Set<string>();
 
-    // 1. All registered administrators
-    memoryStore.users
-      .filter((u) => u.role === 'ADMIN')
-      .forEach((u) => {
-        if (u.email && u.email.includes('@')) recipients.add(u.email.toLowerCase().trim());
-      });
+    // 1. Memory store users
+    memoryStore.users.forEach((u) => {
+      if (u.email && u.email.includes('@')) {
+        recipients.add(u.email.toLowerCase().trim());
+      }
+    });
 
-    // 2. All registered technicians
-    memoryStore.users
-      .filter((u) => u.role === 'TECHNICIAN')
-      .forEach((u) => {
-        if (u.email && u.email.includes('@')) recipients.add(u.email.toLowerCase().trim());
-      });
-
-    // 3. Fallback laboratory email addresses
-    if (recipients.size === 0) {
-      recipients.add('sarah.lin@calibtrack.lab');
-      recipients.add('marcus.vance@calibtrack.lab');
+    // 2. PostgreSQL users if active
+    if (!isFallback() && getPool()) {
+      try {
+        const pool = getPool()!;
+        const [rows]: any = await pool.query('SELECT email FROM users WHERE email IS NOT NULL');
+        if (rows && Array.isArray(rows)) {
+          rows.forEach((r: any) => {
+            if (r.email && r.email.includes('@')) {
+              recipients.add(r.email.toLowerCase().trim());
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[ReminderService] DB users query failed:', err);
+      }
     }
 
-    return Array.from(recipients);
+    // Separate real external emails from mock calibtrack.lab emails
+    const realEmails = Array.from(recipients).filter((e) => !e.endsWith('@calibtrack.lab'));
+
+    // Always ensure the lab owner / administrator receives alerts
+    if (!realEmails.includes('asokanmounesh@gmail.com')) {
+      realEmails.unshift('asokanmounesh@gmail.com');
+    }
+
+    return realEmails.length > 0 ? realEmails : Array.from(recipients);
+  }
+
+  gatherRecipients(eq?: EquipmentEntity): string[] {
+    const recipients = new Set<string>();
+    memoryStore.users.forEach((u) => {
+      if (u.email && u.email.includes('@')) {
+        recipients.add(u.email.toLowerCase().trim());
+      }
+    });
+
+    const realEmails = Array.from(recipients).filter((e) => !e.endsWith('@calibtrack.lab'));
+    if (!realEmails.includes('asokanmounesh@gmail.com')) {
+      realEmails.unshift('asokanmounesh@gmail.com');
+    }
+
+    return realEmails.length > 0 ? realEmails : Array.from(recipients);
   }
 
   /**
@@ -323,6 +352,17 @@ export class ReminderService {
           htmlBody,
           dispatchedAt,
         });
+
+        // Transmit real ISO 17025 metrology alert email to all gathered staff recipients via Gmail SMTP
+        if (settings.email_enabled && recipients.length > 0) {
+          emailService.sendAlertEmail({
+            to: recipients,
+            subject,
+            html: htmlBody,
+          }).catch((err: any) => {
+            console.warn(`[ReminderService] Email dispatch failed for ${eq.equipment_code}:`, err?.message);
+          });
+        }
 
         console.log(`[CalibTrack Reminder] Gmail alert dispatched for ${eq.equipment_code} (${status}) to: ${recipients.join(', ')}`);
       }

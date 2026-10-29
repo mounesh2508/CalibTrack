@@ -589,6 +589,24 @@ export const api = {
     return request<AuthUser[]>('/users');
   },
 
+  async createStaffUser(payload: {
+    name: string;
+    email: string;
+    role?: 'ADMIN' | 'TECHNICIAN';
+    password?: string;
+  }): Promise<{ success: boolean; message: string; user: AuthUser }> {
+    return request<{ success: boolean; message: string; user: AuthUser }>('/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async deleteUser(userId: string): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>(`/users/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+  },
+
   async updateUserRole(userId: string, role: 'ADMIN' | 'TECHNICIAN'): Promise<AuthUser> {
     return request<AuthUser>(`/users/${encodeURIComponent(userId)}/role`, {
       method: 'PATCH',
